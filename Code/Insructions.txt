@@ -1,0 +1,4 @@
+1. Install Easy68K from http://easy68k.com/
+2. Open JumpBlox.X68 in easy68k
+3. Press play in easy68k
+4. Press play on assembler
