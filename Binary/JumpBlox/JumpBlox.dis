@@ -1,0 +1,159 @@
+
+JumpBlox.elf:     file format elf32-m68k
+
+
+Disassembly of section .text.init:
+
+00002000 <_init>:
+    2000:	41fa fffe      	lea %pc@(2000 <_init>),%a0
+    2004:	43f9 0000 2000 	lea 2000 <_init>,%a1
+    200a:	203c 0000 20c4 	movel #8388,%d0
+    2010:	9089           	subl %a1,%d0
+    2012:	e488           	lsrl #2,%d0
+    2014:	5380           	subql #1,%d0
+    2016:	22d8           	movel %a0@+,%a1@+
+    2018:	51c8 fffc      	dbf %d0,2016 <_init+0x16>
+    201c:	4ef9 0000 2024 	jmp 2024 <_postinit>
+
+Disassembly of section .text.postinit:
+
+00002024 <_postinit>:
+    2024:	203c 0000 2160 	movel #8544,%d0
+    202a:	9089           	subl %a1,%d0
+    202c:	e488           	lsrl #2,%d0
+    202e:	2200           	movel %d0,%d1
+    2030:	4841           	swap %d1
+    2032:	6002           	bras 2036 <_postinit+0x12>
+    2034:	22d8           	movel %a0@+,%a1@+
+    2036:	51c8 fffc      	dbf %d0,2034 <_postinit+0x10>
+    203a:	51c9 fff8      	dbf %d1,2034 <_postinit+0x10>
+
+0000203e <_start>:
+    203e:	2e78 0414      	moveal 414 <SDB_MEMSIZE>,%sp
+    2042:	23f8 0490 0000 	movel 490 <EFP_PROG_EXIT>,2160 <_bss_start>
+    2048:	2160 
+    204a:	21fc 0000 2064 	movel #8292,490 <EFP_PROG_EXIT>
+    2050:	0490 
+    2052:	41f9 0000 20c4 	lea 20c4 <_postinit_end>,%a0
+    2058:	4e90           	jsr %a0@
+    205a:	6124           	bsrs 2080 <CALL_CTORS>
+    205c:	41f9 0000 1000 	lea 1000 <INITIALISE>,%a0
+    2062:	4e90           	jsr %a0@
+    2064:	21f9 0000 2160 	movel 2160 <_bss_start>,490 <EFP_PROG_EXIT>
+    206a:	0490 
+    206c:	42a7           	clrl %sp@-
+    206e:	41f9 0000 20f0 	lea 20f0 <__cxa_finalize>,%a0
+    2074:	4e90           	jsr %a0@
+    2076:	588f           	addql #4,%sp
+    2078:	6128           	bsrs 20a2 <CALL_DTORS>
+    207a:	2078 0004      	moveal 4 <DUART_CRA>,%a0
+    207e:	4ed0           	jmp %a0@
+
+00002080 <CALL_CTORS>:
+    2080:	48e7 0038      	moveml %a2-%a4,%sp@-
+    2084:	45f9 0000 2160 	lea 2160 <_bss_start>,%a2
+    208a:	47f9 0000 2160 	lea 2160 <_bss_start>,%a3
+    2090:	598b           	subql #4,%a3
+    2092:	b7ca           	cmpal %a2,%a3
+    2094:	6506           	bcss 209c <CALL_CTORS+0x1c>
+    2096:	2853           	moveal %a3@,%a4
+    2098:	4e94           	jsr %a4@
+    209a:	60f4           	bras 2090 <CALL_CTORS+0x10>
+    209c:	4cdf 1c00      	moveml %sp@+,%a2-%a4
+    20a0:	4e75           	rts
+
+000020a2 <CALL_DTORS>:
+    20a2:	48e7 0038      	moveml %a2-%a4,%sp@-
+    20a6:	45f9 0000 2160 	lea 2160 <_bss_start>,%a2
+    20ac:	47f9 0000 2160 	lea 2160 <_bss_start>,%a3
+    20b2:	b5cb           	cmpal %a3,%a2
+    20b4:	6708           	beqs 20be <CALL_DTORS+0x1c>
+    20b6:	2852           	moveal %a2@,%a4
+    20b8:	4e94           	jsr %a4@
+    20ba:	588a           	addql #4,%a2
+    20bc:	60f4           	bras 20b2 <CALL_DTORS+0x10>
+    20be:	4cdf 1c00      	moveml %sp@+,%a2-%a4
+    20c2:	4e75           	rts
+
+Disassembly of section .text:
+
+000020c4 <__kinit>:
+
+void *__dso_handle;
+
+__attribute__((weak)) void __kinit() {
+  // zero .bss
+  for (uint32_t *dst = &_bss_start; dst < &_bss_end; *dst++ = 0);
+    20c4:	41f9 0000 2160 	lea 2160 <_code_end>,%a0
+    20ca:	b1fc 0000 5968 	cmpal #22888,%a0
+    20d0:	641c           	bccs 20ee <__kinit+0x2a>
+    20d2:	203c 0000 5968 	movel #22888,%d0
+    20d8:	0480 0000 2161 	subil #8545,%d0
+    20de:	72fc           	moveq #-4,%d1
+    20e0:	c081           	andl %d1,%d0
+    20e2:	0680 0000 2164 	addil #8548,%d0
+    20e8:	4298           	clrl %a0@+
+    20ea:	b088           	cmpl %a0,%d0
+    20ec:	66fa           	bnes 20e8 <__kinit+0x24>
+}
+    20ee:	4e75           	rts
+
+000020f0 <__cxa_finalize>:
+/*
+ * We probably don't need the full dso_handle capability as we're always
+ * statically linked, but I'd rather do a proper impl now than have it 
+ * break later because of a half-baked one :D
+ */
+void __cxa_finalize(void *dso_handle) {
+    20f0:	48e7 3020      	moveml %d2-%d3/%a2,%sp@-
+    20f4:	262f 0010      	movel %sp@(16),%d3
+    for (int i = cxa_atexit_count - 1; i >= 0; i--) {
+    20f8:	7200           	moveq #0,%d1
+    20fa:	3239 0000 2164 	movew 2164 <cxa_atexit_count>,%d1
+    2100:	2401           	movel %d1,%d2
+    2102:	5382           	subql #1,%d2
+    2104:	4a81           	tstl %d1
+    2106:	6738           	beqs 2140 <__cxa_finalize+0x50>
+    2108:	2001           	movel %d1,%d0
+    210a:	e788           	lsll #3,%d0
+    210c:	2440           	moveal %d0,%a2
+    210e:	95c1           	subal %d1,%a2
+    2110:	d5ca           	addal %a2,%a2
+    2112:	d5fc 0000 2158 	addal #8536,%a2
+        cxa_atexit_entry *entry = &cxa_atexits[i];
+
+        if ((dso_handle == NULL || dso_handle == entry->dso_handle) && !entry->done) {
+    2118:	4a83           	tstl %d3
+    211a:	662a           	bnes 2146 <__cxa_finalize+0x56>
+    211c:	4a2a 000c      	tstb %a2@(12)
+    2120:	6610           	bnes 2132 <__cxa_finalize+0x42>
+            entry->func(entry->ptr);
+    2122:	2f2a 0004      	movel %a2@(4),%sp@-
+    2126:	2052           	moveal %a2@,%a0
+    2128:	4e90           	jsr %a0@
+            entry->done = true;
+    212a:	157c 0001 000c 	moveb #1,%a2@(12)
+    2130:	588f           	addql #4,%sp
+    for (int i = cxa_atexit_count - 1; i >= 0; i--) {
+    2132:	45ea fff2      	lea %a2@(-14),%a2
+    2136:	51ca ffe0      	dbf %d2,2118 <__cxa_finalize+0x28>
+    213a:	4242           	clrw %d2
+    213c:	5382           	subql #1,%d2
+    213e:	64d8           	bccs 2118 <__cxa_finalize+0x28>
+        }
+    }
+}
+    2140:	4cdf 040c      	moveml %sp@+,%d2-%d3/%a2
+    2144:	4e75           	rts
+        if ((dso_handle == NULL || dso_handle == entry->dso_handle) && !entry->done) {
+    2146:	b6aa 0008      	cmpl %a2@(8),%d3
+    214a:	67d0           	beqs 211c <__cxa_finalize+0x2c>
+    for (int i = cxa_atexit_count - 1; i >= 0; i--) {
+    214c:	45ea fff2      	lea %a2@(-14),%a2
+    2150:	51ca fff4      	dbf %d2,2146 <__cxa_finalize+0x56>
+    2154:	4242           	clrw %d2
+    2156:	5382           	subql #1,%d2
+    2158:	64ec           	bccs 2146 <__cxa_finalize+0x56>
+}
+    215a:	4cdf 040c      	moveml %sp@+,%d2-%d3/%a2
+    215e:	4e75           	rts

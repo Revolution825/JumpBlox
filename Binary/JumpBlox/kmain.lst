@@ -1,0 +1,1961 @@
+Sections:
+00: "seg1000" (1000-1BA7)
+
+
+Source: "kmain.asm"
+                            	     1: *-----------------------------------------------------------
+                            	     2: * Title      :: Jumpblox
+                            	     3: * Written by :: Diarmuid & Isaiah & Stuart
+                            	     4: * Date       :: 04/03/2024
+                            	     5: * Description:: An endless runner game in which you have to avoid hitting the red blocks increase both your score and d
+                            	     6: *              The green block adds health and as your distance increases so does the difficulty level.
+                            	     7: *-----------------------------------------------------------
+                            	     8:         ORG     $1000
+                            	     9: kmain::
+                            	    10: 
+                            	    11: *-----------------------------------------------------------
+                            	    12: * Section       :: Trap Codes
+                            	    13: * Description   :: Trap Codes used throughout StarterKit
+                            	    14: *-----------------------------------------------------------
+                            	    15: * Trap CODES
+                            	    16: TC_SCREEN   EQU         33          ; Screen size information trap code
+                            	    17: TC_S_SIZE   EQU         00          ; Places 0 in D1.L to retrieve Screen width and height in D1.L
+                            	    18:                                     ; First 16 bit Word is screen Width and Second 16 bits is screen Height
+                            	    19: TC_KEYCODE  EQU         19          ; Check for pressed keys
+                            	    20: TC_DBL_BUF  EQU         92          ; Double Buffer Screen Trap Code
+                            	    21: TC_CURSR_P  EQU         11          ; Trap code cursor position
+                            	    22: 
+                            	    23: TC_EXIT     EQU         09          ; Exit Trapcode
+                            	    24: 
+                            	    25: *-----------------------------------------------------------
+                            	    26: * Section       :: Charater Setup
+                            	    27: * Description   :: Size of Player and Enemy and properties
+                            	    28: * of these characters e.g Starting Positions and Sizes
+                            	    29: *-----------------------------------------------------------
+                            	    30: PLYR_HEALTH_INIT EQU   100          ; Players initial health
+                            	    31: DMG_INIT    EQU         25          ; Enemy initial damage
+                            	    32: HEAL_INIT   EQU         15          ; HEALTH PICKUP INITIAL HEALING VALUE
+                            	    33: 
+                            	    34: SCREEN_R_M  EQU         37
+                            	    35: SCREEN_C_M  EQU         180
+                            	    36: 
+                            	    37: PLYR_W_INIT EQU         05          ; Players initial Width
+                            	    38: PLYR_H_INIT EQU         03          ; Players initial Height
+                            	    39: 
+                            	    40: PLYR_DFLT_V EQU         00          ; Default Player Velocity
+                            	    41: PLYR_JUMP_V EQU        -12          ; Player Jump Velocity
+                            	    42: PLYR_DFLT_G EQU         01          ; Player Default Gravity
+                            	    43: 
+                            	    44: GND_TRUE    EQU         01          ; Player on Ground True
+                            	    45: GND_FALSE   EQU         00          ; Player on Ground False
+                            	    46: GND_W       EQU         10000       ; Ground width
+                            	    47: GND_H       EQU         01          ; Ground height
+                            	    48: 
+                            	    49: HEALTH_H    EQU         10          ; HEALTHBAR HEIGHT
+                            	    50: 
+                            	    51: RUN_INDEX   EQU         00          ; Player Run Sound Index  
+                            	    52: JMP_INDEX   EQU         01          ; Player Jump Sound Index  
+                            	    53: OPPS_INDEX  EQU         02          ; Player Opps Sound Index
+                            	    54: POWERUP_INDEX   EQU     03          ; POWERUP SOUND INDEX
+                            	    55: 
+                            	    56: ENMY_W_INIT EQU         05          ; Enemy initial Width
+                            	    57: ENMY_H_INIT EQU         03          ; Enemy initial Height
+                            	    58: 
+                            	    59: POWERUP_W_INIT   EQU    05          ; POWERUP INITIAL WIDTH
+                            	    60: POWERUP_H_INIT   EQU    03          ; POWERUP INITIAL HEIGHT
+                            	    61: 
+                            	    62: PLYR_GROWTH_INIT EQU    00          ; Player Initial Growth Value
+                            	    63: PLAYER_GROWTH_VALUE EQU 10          ; Amount that player grows by
+                            	    64: GROWTH_W      EQU       04          ; GROWTH Width
+                            	    65: GROWTH_H      EQU       04          ; GROWTH Height
+                            	    66: 
+                            	    67: 
+                            	    68: *-----------------------------------------------------------
+                            	    69: * Section       :: Game Stats
+                            	    70: * Description   :: Points
+                            	    71: *-----------------------------------------------------------
+                            	    72: POINTS      EQU         01          ; Points added
+                            	    73: 
+                            	    74: *-----------------------------------------------------------
+                            	    75: * Section       :: Keyboard Keys
+                            	    76: * Description   :: Spacebar and Escape or two functioning keys
+                            	    77: * Spacebar to JUMP and Escape to Exit Game
+                            	    78: *-----------------------------------------------------------
+                            	    79: SPACEBAR    EQU         $20         ; Spacebar ASCII Keycode
+                            	    80: ESCAPE      EQU         $1B         ; Escape ASCII Keycode
+                            	    81: 
+                            	    82: *-----------------------------------------------------------
+                            	    83: * Subroutine    :: Initialise
+                            	    84: * Description   :: Initialise game data into memory such as 
+                            	    85: * sounds and screen size
+                            	    86: *-----------------------------------------------------------
+                            	    87: INITIALISE::
+                            	    88:     ; Initialise Sounds
+00:00001000 610003E4        	    89:     bsr     RUN_LOAD                ; Load Run Sound into Memory
+00:00001004 610003FC        	    90:     bsr     JUMP_LOAD               ; Load Jump Sound into Memory
+00:00001008 6100041C        	    91:     bsr     OPPS_LOAD               ; Load Opps (Collision) Sound into Memory
+00:0000100C 6100043C        	    92:     bsr     POWERUP_LOAD            ; LOAD POWERUP SOUND INTO MEMORY
+                            	    93:     
+                            	    94:     ; INITIALISE LEVEL FLAGS AND LEVEL
+00:00001010 7200            	    95:     clr.l   D1
+00:00001012 123C0000        	    96:     move.b  #00,D1
+00:00001016 11C11B78        	    97:     move.b  D1,LEVEL2_FLAG
+00:0000101A 11C11B79        	    98:     move.b  D1,LEVEL3_FLAG
+00:0000101E 11FC00011B7E    	    99:     move.b  #1,MOVE_POWER_FLG
+00:00001024 11FC00011B7F    	   100:     move.b  #1,MOVE_GROWTH_FLG
+                            	   101:     
+00:0000102A 7200            	   102:     clr.l   D1
+00:0000102C 7201            	   103:     move.l  #01,D1
+00:0000102E 21C11B7A        	   104:     move.l  D1,LEVEL
+                            	   105:     
+                            	   106:     ; Screen Size
+00:00001032 11FC00251B06    	   107:     move.b  #37,SCREEN_H             ; place screen height in memory location
+00:00001038 11FC00B41B04    	   108:     move.b  #180,SCREEN_W             ; place screen width in memory location
+                            	   109: 
+                            	   110:     ; Place the Player at the center of the screen
+00:0000103E 7200            	   111:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:00001040 12381B04        	   112:     move.b  SCREEN_W,D1             ; Place Screen width in D1
+00:00001044 82FC0002        	   113:     divu    #02,D1                  ; divide by 2 for center on X Axis
+00:00001048 21C11B10        	   114:     move.l  D1,PLAYER_X             ; Players X Position
+                            	   115: 
+00:0000104C 7200            	   116:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:0000104E 12381B06        	   117:     move.b  SCREEN_H,D1             ; Place Screen width in D1
+00:00001052 82FC0002        	   118:     divu    #02,D1                  ; divide by 2 for center on Y Axis
+00:00001056 21C11B14        	   119:     move.l  D1,PLAYER_Y             ; Players Y Position
+                            	   120:     
+                            	   121:     ; Initailise Player Health
+00:0000105A 7200            	   122:     clr.l   D1                                          ; Clear contents of D1 (XOR is faster)
+00:0000105C 7264            	   123:     move.l  #PLYR_HEALTH_INIT,D1                        ; Init Health
+00:0000105E 21C11B0C        	   124:     move.l  D1,PLAYER_HEALTH
+                            	   125:     
+                            	   126:     ; Initailise Damage
+00:00001062 7200            	   127:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:00001064 7219            	   128:     move.l  #DMG_INIT,D1            ; Init Health
+00:00001066 21C11B70        	   129:     move.l  D1,DAMAGE
+                            	   130:     
+                            	   131:     ; INITIALISE HEALING FROM HEALTH POWERUP
+00:0000106A 7200            	   132:     clr.l   D1                      ; CLEAR CONTENTS OF D1
+00:0000106C 720F            	   133:     move.l  #HEAL_INIT,D1           ; INIT HEALING FORM POWERUPS
+00:0000106E 21C11B74        	   134:     move.l  D1,HEAL     
+                            	   135:     
+                            	   136:     ; Initialise Player Score
+00:00001072 7200            	   137:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:00001074 7200            	   138:     move.l  #00,D1                  ; Init Score
+00:00001076 21C11B18        	   139:     move.l  D1,PLAYER_SCORE
+                            	   140:     
+                            	   141:     ; INITILISE PLAYER DISTANCE
+00:0000107A 7200            	   142:     clr.l   D1                      ; CLEAR CONTENTS OF D1
+00:0000107C 7200            	   143:     move.l  #00,D1                  ; INIT DISTANCE
+00:0000107E 21C11B1C        	   144:     move.l  D1,DISTANCE
+                            	   145:     
+                            	   146:     ; Initialise Player Growth Value
+00:00001082 7200            	   147:     clr.l   D1                      ; Clearing the contents of D1
+00:00001084 7200            	   148:     move.l  #PLYR_GROWTH_INIT,D1    ; Init Player Growth
+00:00001086 21C11B58        	   149:     move.l  D1,PLAYER_GROWTH 
+                            	   150:     
+                            	   151:     ; Initial Position for GROWTH
+00:0000108A 7200            	   152:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:0000108C 12381B04        	   153:     move.b  SCREEN_W,D1             ; Place Screen width in D1
+00:00001090 21C11B50        	   154:     move.l  D1,GROWTH_X             ; GROWTH X Position
+                            	   155: 
+00:00001094 7200            	   156:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:00001096 12381B06        	   157:     move.b  SCREEN_H,D1             ; Place Screen width in D1
+00:0000109A 82FC0002        	   158:     divu    #02,D1                  ; divide by 2 for center on Y Axis  
+00:0000109E 92BC0000001E    	   159:     sub.l   #30,D1                  ; Brings the position of GROWTH up 15 pixels of the screen
+00:000010A4 21C11B54        	   160:     move.l  D1,GROWTH_Y             ; GROWTH Y Position
+                            	   161: 
+                            	   162:     ; Initialise Player Velocity
+00:000010A8 7200            	   163:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000010AA 123C0000        	   164:     move.b  #PLYR_DFLT_V,D1         ; Init Player Velocity
+00:000010AE 21C11B20        	   165:     move.l  D1,PLYR_VELOCITY
+                            	   166: 
+                            	   167:     ; Initialise Player Gravity
+00:000010B2 7200            	   168:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000010B4 7201            	   169:     move.l  #PLYR_DFLT_G,D1         ; Init Player Gravity
+00:000010B6 21C11B24        	   170:     move.l  D1,PLYR_GRAVITY
+                            	   171: 
+                            	   172:     ; Initialize Player on Ground
+00:000010BA 21FC000000011B28	   173:     move.l  #GND_TRUE,PLYR_ON_GND   ; Init Player on Ground
+                            	   174: 
+                            	   175:     ; Initial Position for Enemy
+00:000010C2 7200            	   176:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000010C4 12381B04        	   177:     move.b  SCREEN_W,D1             ; Place Screen width in D1
+00:000010C8 21C11B2C        	   178:     move.l  D1,ENEMY_X              ; Enemy X Position
+                            	   179: 
+00:000010CC 7200            	   180:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000010CE 12381B06        	   181:     move.b  SCREEN_H,D1             ; Place Screen width in D1
+00:000010D2 82FC0002        	   182:     divu    #02,D1                  ; divide by 2 for center on Y Axis
+00:000010D6 21C11B30        	   183:     move.l  D1,ENEMY_Y              ; Enemy Y Position
+                            	   184:     
+                            	   185:     ; INITIAL COLLISION FLAGS
+00:000010DA 7200            	   186:     clr.l   D1                      ; CLEAR CONTENTS OF D1
+00:000010DC 123C0000        	   187:     move.b  #00,D1                  ; move 0 TO D1
+00:000010E0 11C11B34        	   188:     move.b  D1,ENEMY_C
+00:000010E4 11C11B3D        	   189:     move.b  D1,ENEMY2_C
+00:000010E8 11C11B46        	   190:     move.b  D1,ENEMY3_C
+00:000010EC 11C11B4F        	   191:     move.b  D1,POWERUP_C
+                            	   192:     
+                            	   193:     ; Initial Position for Enemy2
+00:000010F0 7200            	   194:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000010F2 12381B04        	   195:     move.b  SCREEN_W,D1             ; Place Screen width in D1
+00:000010F6 21C11B35        	   196:     move.l  D1,ENEMY2_X             ; Enemy X Position
+                            	   197: 
+00:000010FA 7200            	   198:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000010FC 12381B06        	   199:     move.b  SCREEN_H,D1             ; Place Screen width in D1
+00:00001100 82FC0002        	   200:     divu    #02,D1                  ; divide by 2 for center on Y Axis
+00:00001104 21C11B39        	   201:     move.l  D1,ENEMY2_Y             ; Enemy Y Position
+                            	   202:     
+                            	   203:     ; Initial Position for Enemy3
+00:00001108 7200            	   204:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:0000110A 12381B04        	   205:     move.b  SCREEN_W,D1             ; Place Screen width in D1
+00:0000110E 21C11B3E        	   206:     move.l  D1,ENEMY3_X             ; Enemy X Position
+                            	   207: 
+00:00001112 7200            	   208:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:00001114 12381B06        	   209:     move.b  SCREEN_H,D1             ; Place Screen width in D1
+00:00001118 82FC0002        	   210:     divu    #02,D1                  ; divide by 2 for center on Y Axis
+00:0000111C 21C11B42        	   211:     move.l  D1,ENEMY3_Y             ; Enemy Y Position
+                            	   212:     
+                            	   213:     ; Initial Position for POWERUP
+00:00001120 7200            	   214:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:00001122 12381B04        	   215:     move.b  SCREEN_W,D1             ; Place Screen width in D1
+00:00001126 21C11B47        	   216:     move.l  D1,POWERUP_X            ; POWERUP X Position
+                            	   217: 
+00:0000112A 7200            	   218:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:0000112C 12381B06        	   219:     move.b  SCREEN_H,D1             ; Place Screen width in D1
+00:00001130 82FC0002        	   220:     divu    #02,D1                  ; divide by 2 for center on Y Axis
+00:00001134 927C0023        	   221:     sub.w   #35,D1
+00:00001138 21C11B4B        	   222:     move.l  D1,POWERUP_Y            ; POWERUP Y Position
+                            	   223:     
+                            	   224:     ; Inital position for ground line
+00:0000113C 7200            	   225:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:0000113E 7200            	   226:     move.l  #0,D1                    ; Place Screen width in D1
+00:00001140 21C11B5C        	   227:     move.l  D1,GND_X                ; GROUNDLINE X Position
+                            	   228: 
+00:00001144 7200            	   229:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:00001146 12381B06        	   230:     move.b  SCREEN_H,D1             ; Place Screen width in D1
+00:0000114A 82FC0002        	   231:     divu    #02,D1                  ; divide by 2 for center on Y Axis
+00:0000114E D27C0009        	   232:     add.w   #09,D1
+00:00001152 21C11B60        	   233:     move.l  D1,GND_Y                ; GROUNDLINE Y Position
+                            	   234: 
+                            	   235:     ; Clear the screen (see easy 68k help)
+00:00001156 610008FA        	   236:     bsr     CLEAR_SCREEN
+                            	   237: 	
+                            	   238: INITIALISE_C_FLAGS::
+                            	   239:     ; INITIAL COLLISION FLAGS
+00:0000115A 7200            	   240:     clr.l   D1                      ; CLEAR CONTENTS OF D1
+00:0000115C 123C0000        	   241:     move.b  #00,D1                  ; move 0 TO D1
+00:00001160 11C11B34        	   242:     move.b  D1,ENEMY_C
+00:00001164 11C11B3D        	   243:     move.b  D1,ENEMY2_C
+00:00001168 11C11B46        	   244:     move.b  D1,ENEMY3_C
+00:0000116C 11C11B4F        	   245:     move.b  D1,POWERUP_C
+                            	   246: 
+                            	   247: *-----------------------------------------------------------
+                            	   248: * Subroutine    :: Game
+                            	   249: * Description   :: Game including main GameLoop. GameLoop is like
+                            	   250: * a while loop in that it runs forever until interupted
+                            	   251: * (Input, Update, Draw). The Enemies Run at Player Jump to Avoid
+                            	   252: *-----------------------------------------------------------
+                            	   253: GAME::
+00:00001170 61000284        	   254:     bsr     PLAY_RUN                ; Play Run Wav
+                            	   255: GAMELOOP::
+                            	   256:     ; Main Gameloop
+00:00001174 6110            	   257:     bsr     INPUT                   ; Check Keyboard Input
+00:00001176 6136            	   258:     bsr     UPDATE                  ; Update positions and points
+00:00001178 61000204        	   259:     bsr     IS_PLAYER_ON_GND        ; Check if player is on ground
+00:0000117C 61000554        	   260:     bsr     CHECK_ALL_COLLISIONS    ; Check for Collisions
+00:00001180 610001CA        	   261:     bsr     DRAW                    ; Draw the Scene
+00:00001184 60EE            	   262:     bra     GAMELOOP                ; Loop back to GameLoop
+                            	   263: 
+                            	   264: *-----------------------------------------------------------
+                            	   265: * Subroutine    :: Input
+                            	   266: * Description   :: Process Keyboard Input
+                            	   267: *-----------------------------------------------------------
+                            	   268: INPUT::
+                            	   269:     ; Process Input
+00:00001186 610008D4        	   270:     bsr     READCHAR
+00:0000118A 6102            	   271:     bsr     PROCESS_INPUT           ; Process Key
+00:0000118C 4E75            	   272:     rts
+                            	   273: 
+                            	   274: *-----------------------------------------------------------
+                            	   275: * Subroutine    :: Process Input
+                            	   276: * Description   :: Branch based on keys pressed
+                            	   277: *-----------------------------------------------------------
+                            	   278: PROCESS_INPUT::
+00:0000118E 11C01B08        	   279:     move.b  D0,CURRENT_KEY          ; Put Current Key in Memory
+00:00001192 0C38001B1B08    	   280:     cmp.b   #$1B,CURRENT_KEY        ; Is Current Key Escape
+00:00001198 67000750        	   281:     beq     EXIT                    ; Exit if Escape
+00:0000119C 0C3800201B08    	   282:     cmp.b   #$20,CURRENT_KEY        ; Is Current Key Spacebar
+00:000011A2 6700021C        	   283:     beq     JUMP                    ; Jump
+00:000011A6 42B81B08        	   284:     clr.l   CURRENT_KEY             ; Set Current Key to nothing (no key is pressed if it reaches here)
+00:000011AA 60000236        	   285:     bra     IDLE                    ; Go To Idle If No Keypress
+                            	   286: *-----------------------------------------------------------
+                            	   287: * Subroutine    :: Update
+                            	   288: * Description   :: Main update loop update Player and Enemies
+                            	   289: *-----------------------------------------------------------
+                            	   290: UPDATE::
+                            	   291:     ; Update the Players Positon based on Velocity and Gravity
+00:000011AE 7200            	   292:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000011B0 22381B20        	   293:     move.l  PLYR_VELOCITY,D1        ; Fetch Player Velocity
+00:000011B4 24381B24        	   294:     move.l  PLYR_GRAVITY,D2         ; Fetch Player Gravity
+00:000011B8 D282            	   295:     add.l   D2,D1                   ; Add Gravity to Velocity
+00:000011BA 21C11B20        	   296:     move.l  D1,PLYR_VELOCITY        ; Update Player Velocity
+00:000011BE D2B81B14        	   297:     add.l   PLAYER_Y,D1             ; Add Velocity to Player
+00:000011C2 21C11B14        	   298:     move.l  D1,PLAYER_Y             ; Update Players Y Position 
+                            	   299: 
+                            	   300:     ; Move the Enemy
+00:000011C6 7200            	   301:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000011C8 7000            	   302:     clr.l   D0                      ; Clear the contents of D0
+00:000011CA 22381B2C        	   303:     move.l  ENEMY_X,D1              ; Move the Enemy X Position to D0
+00:000011CE 4A81            	   304:     cmp.l   #00,D1                  ; Check if enemy is off screen
+00:000011D0 6F000106        	   305:     ble     RESET_ENEMY_POSITION    ; Reset Enemy if off Screen
+00:000011D4 610000C2        	   306:     bsr     MOVE_ENEMY              ; Move the Enemy
+                            	   307:     
+                            	   308:     ; Move the Enemy2
+00:000011D8 7200            	   309:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000011DA 7000            	   310:     clr.l   D0                      ; Clear the contents of D0
+00:000011DC 22381B35        	   311:     move.l  ENEMY2_X,D1             ; Move the Enemy X Position to D0
+00:000011E0 4A81            	   312:     cmp.l   #00,D1                  ; Check if enemy is off screen
+00:000011E2 6F000112        	   313:     ble     RESET_ENEMY2_POSITION   ; Reset Enemy if off Screen
+00:000011E6 610000BA        	   314:     bsr     MOVE_ENEMY2             ; Move the Enemy
+                            	   315:     
+                            	   316:     ; Move the Enemy3
+00:000011EA 7200            	   317:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000011EC 7000            	   318:     clr.l   D0                      ; Clear the contents of D0
+00:000011EE 22381B3E        	   319:     move.l  ENEMY3_X,D1             ; Move the Enemy X Position to D0
+00:000011F2 4A81            	   320:     cmp.l   #00,D1                  ; Check if enemy is off screen
+00:000011F4 6F000116        	   321:     ble     RESET_ENEMY3_POSITION   ; Reset Enemy if off Screen
+00:000011F8 610000AE        	   322:     bsr     MOVE_ENEMY3             ; Move the Enemy
+                            	   323:     
+                            	   324:     ; Move POWERUP
+00:000011FC 7200            	   325:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000011FE 7000            	   326:     clr.l   D0                      ; Clear the contents of D0
+00:00001200 22381B47        	   327:     move.l  POWERUP_X,D1            ; Move the POWERUP X Position to D1
+00:00001204 4A81            	   328:     cmp.l   #00,D1                  ; Check if POWERUP is off screen
+00:00001206 6F000122        	   329:     ble     RESET_POWERUP_POSITION  ; Reset POWERUP if off Screen
+00:0000120A 610000A2        	   330:     bsr     MOVE_POWERUP            ; Move the POWERUP
+                            	   331:     
+                            	   332:     ; INCREASE SCORE AND DISTANCE AS GAME GOES ON
+00:0000120E 7200            	   333:     clr.l   D1
+00:00001210 5281            	   334:     add.l   #POINTS,D1              ; Move points upgrade to D1
+00:00001212 D2B81B18        	   335:     add.l   PLAYER_SCORE,D1         ; Add to current player score
+00:00001216 21C11B18        	   336:     move.l  D1,PLAYER_SCORE         ; Update player score in memory
+                            	   337:     
+00:0000121A 7200            	   338:     clr.l   D1
+00:0000121C 5281            	   339:     add.l   #POINTS,D1              ; move POINTS UPGRADE TO D1
+00:0000121E D2B81B1C        	   340:     add.l   DISTANCE,D1             ; ADD CURRENT DISTANCE TO D1
+00:00001222 21C11B1C        	   341:     move.l  D1,DISTANCE             ; move THE UPDATED DISTANCE TO DISTANCE
+                            	   342:     
+                            	   343:     ;Move GROWTH
+00:00001226 7200            	   344:     clr.l   D1                      ; Clear the contents of D1
+00:00001228 22381B50        	   345:     move.l  GROWTH_X,D1             ; Move the GROWTH Position to D1
+00:0000122C 4A81            	   346:     cmp.l   #00,D1
+00:0000122E 6F000110        	   347:     ble     RESET_GROWTH_POSITION   ; Reset GROWTH if off Screen
+00:00001232 6100008E        	   348:     bsr     MOVE_GROWTH             ; Move the GROWTH Object 
+                            	   349: 
+00:00001236 4E75            	   350:     rts                             ; Return to subroutine  
+                            	   351: 
+                            	   352: *-----------------------------------------------------------
+                            	   353: * Subroutines   :: INCREASE DIFFICULTY LEVEL
+                            	   354: * Description   :: INCREASES THE DIFFICULTY OF THE GAME AFTER A CERTAIN DISTANCE IS REACHED
+                            	   355: *-----------------------------------------------------------
+                            	   356: 
+                            	   357: LEVEL2_TEST::                        ; CHECKS IF A DISTANCE OF 600 HAS BEEN REACHED
+00:00001238 223C00000258    	   358:     move.l  #600,D1          
+00:0000123E 24381B1C        	   359:     move.l  DISTANCE,D2
+00:00001242 B481            	   360:     cmp.l   D1,D2
+                            	   361:     
+00:00001244 6702            	   362:     beq     LEVEL2_UPDATE
+                            	   363:     
+00:00001246 4E75            	   364:     rts
+                            	   365:     
+                            	   366: LEVEL2_UPDATE::                      ; SWITHCES THE LEVEL2_FLAG WHICH CHANGES ENEMY BEHAVIOUR
+00:00001248 11FC00011B78    	   367:     move.b   #1,LEVEL2_FLAG
+00:0000124E 21FC000000021B7A	   368:     move.l   #02,LEVEL
+                            	   369:     
+00:00001256 4E75            	   370:     rts
+                            	   371:     
+                            	   372: CNG_ENEMY::
+00:00001258 22381B30        	   373:     move.l  ENEMY_Y,D1                                  ; MOVES ENEMY_Y TO D1
+00:0000125C 0A410004        	   374:     eor     #%00000000000000000000000000000100,D1       ; CHANGES ENEMY_Y BY 
+00:00001260 21C11B30        	   375:     move.l  D1,ENEMY_Y     
+00:00001264 7200            	   376:     clr.l   D1
+                            	   377:     
+00:00001266 4E75            	   378:     rts
+                            	   379:     
+                            	   380: CNG_ENEMY3::
+                            	   381:     
+00:00001268 22381B42        	   382:     move.l  ENEMY3_Y,D1
+00:0000126C 0A410008        	   383:     eor     #%00000000000000000000000000001000,D1
+00:00001270 21C11B42        	   384:     move.l  D1,ENEMY3_Y
+00:00001274 7200            	   385:     clr.l   D1
+                            	   386:     
+00:00001276 4E75            	   387:     rts
+                            	   388:     
+                            	   389: LEVEL3_TEST::                        ; CHECKS IF A DISTANCE OF 1200 HAS BEEN REACHED
+00:00001278 223C000004B0    	   390:     move.l  #1200,D1          
+00:0000127E 24381B1C        	   391:     move.l  DISTANCE,D2
+00:00001282 B481            	   392:     cmp.l   D1,D2
+                            	   393:     
+00:00001284 6702            	   394:     beq     LEVEL3_UPDATE
+                            	   395:     
+00:00001286 4E75            	   396:     rts
+                            	   397:     
+                            	   398: LEVEL3_UPDATE::                      ; SWITHCES THE LEVEL3_FLAG WHICH CHANGES ENEMY BEHAVIOUR
+00:00001288 11FC00011B79    	   399:     move.b   #1,LEVEL3_FLAG
+00:0000128E 21FC000000031B7A	   400:     move.l   #03,LEVEL
+                            	   401:     
+00:00001296 4E75            	   402:     rts
+                            	   403: 
+                            	   404: *-----------------------------------------------------------
+                            	   405: * Subroutine    :: Move Enemy
+                            	   406: * Description   :: Move Enemy Right to Left
+                            	   407: *-----------------------------------------------------------
+                            	   408: MOVE_ENEMY::
+00:00001298 55B81B2C        	   409:     sub.l   #02,ENEMY_X                 ; Move enemy by X Value
+00:0000129C 619A            	   410:     bsr LEVEL2_TEST
+00:0000129E 61D8            	   411:     bsr LEVEL3_TEST
+                            	   412:     
+00:000012A0 4E75            	   413:     rts
+                            	   414:     
+                            	   415: MOVE_ENEMY2::
+00:000012A2 57B81B35        	   416:     sub.l   #03,ENEMY2_X                ; Move enemy by X Value
+00:000012A6 4E75            	   417:     rts
+                            	   418:     
+                            	   419: MOVE_ENEMY3::
+00:000012A8 53B81B3E        	   420:     sub.l   #01,ENEMY3_X                ; Move enemy by X Value
+00:000012AC 4E75            	   421:     rts
+                            	   422:     
+                            	   423: MOVE_POWERUP::
+00:000012AE 0A3800011B7E    	   424:     eor.b   #%00000001,MOVE_POWER_FLG
+00:000012B4 4A3900000000    	   425:     tst.b   MOVE_POWER_FLAG
+00:000012BA 671A            	   426:     beq     SKIPMOVE
+00:000012BC 55B81B47        	   427:     sub.l   #02,POWERUP_X               ; move POWERUP BY X VALUE
+00:000012C0 4E75            	   428:     rts
+                            	   429:     
+                            	   430: MOVE_GROWTH::
+00:000012C2 0A3800011B7F    	   431:     eor.b   #%00000001,MOVE_GROWTH_FLG
+00:000012C8 4A3900000000    	   432:     tst.b   MOVE_GROWTH_FLAG
+00:000012CE 6706            	   433:     beq     SKIPMOVE
+00:000012D0 53B81B50        	   434:     sub.l   #01,GROWTH_X                ; Move GROWTH by X Value
+00:000012D4 4E75            	   435:     rts
+                            	   436: SKIPMOVE::
+00:000012D6 4E75            	   437:     rts
+                            	   438: *-----------------------------------------------------------
+                            	   439: * Subroutine    :: Reset Enemy
+                            	   440: * Description   :: Reset Enemy if to passes 0 to Right of Screen
+                            	   441: *-----------------------------------------------------------
+                            	   442: RESET_ENEMY_POSITION::
+00:000012D8 7200            	   443:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000012DA 12381B04        	   444:     move.b  SCREEN_W,D1             ; Place Screen width in D1
+00:000012DE 21C11B2C        	   445:     move.l  D1,ENEMY_X              ; Enemy X Position
+                            	   446:     
+00:000012E2 7200            	   447:     clr.l   D1                      ; CLEAR CONTENTS OF D1
+00:000012E4 123C0000        	   448:     move.b  #00,D1                  ; move 0 TO D1
+00:000012E8 11C11B34        	   449:     move.b  D1,ENEMY_C              ; RESET COLLISION FLAG
+                            	   450:     
+00:000012EC 4A381B78        	   451:     tst.b   LEVEL2_FLAG
+00:000012F0 6600FF66        	   452:     BNE     CNG_ENEMY
+                            	   453:     
+00:000012F4 4E75            	   454:     rts
+                            	   455:     
+                            	   456: RESET_ENEMY2_POSITION::
+00:000012F6 7200            	   457:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000012F8 12381B04        	   458:     move.b  SCREEN_W,D1             ; Place Screen width in D1
+00:000012FC 21C11B35        	   459:     move.l  D1,ENEMY2_X             ; Enemy X Position
+                            	   460:     
+00:00001300 7200            	   461:     clr.l   D1                      ; CLEAR CONTENTS OF D1
+00:00001302 123C0000        	   462:     move.b  #00,D1                  ; move 0 TO D1
+00:00001306 11C11B3D        	   463:     move.b  D1,ENEMY2_C             ; RESET COLLISION FLAG
+                            	   464:     
+                            	   465: 
+                            	   466:     
+00:0000130A 4E75            	   467:     rts
+                            	   468:     
+                            	   469: RESET_ENEMY3_POSITION::
+00:0000130C 7200            	   470:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:0000130E 12381B04        	   471:     move.b  SCREEN_W,D1             ; Place Screen width in D1
+00:00001312 21C11B3E        	   472:     move.l  D1,ENEMY3_X             ; Enemy X Position
+                            	   473:     
+00:00001316 7200            	   474:     clr.l   D1                      ; CLEAR CONTENTS OF D1
+00:00001318 123C0000        	   475:     move.b  #00,D1                  ; move 0 TO D1
+00:0000131C 11C11B46        	   476:     move.b  D1,ENEMY3_C             ; RESET COLLISION FLAG
+                            	   477:     
+00:00001320 4A381B78        	   478:     tst.b   LEVEL2_FLAG
+00:00001324 6600FF42        	   479:     BNE     CNG_ENEMY3
+                            	   480:     
+00:00001328 4E75            	   481:     rts
+                            	   482:     
+                            	   483: RESET_POWERUP_POSITION::
+00:0000132A 7200            	   484:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:0000132C 12381B04        	   485:     move.b  SCREEN_W,D1          ; Place Screen width in D1
+00:00001330 21C11B47        	   486:     move.l  D1,POWERUP_X   ; POWERUP X Position
+                            	   487:     
+00:00001334 7200            	   488:     clr.l   D1                      ; CLEAR CONTENTS OF D1
+00:00001336 123C0000        	   489:     move.b  #00,D1          ; move 0 TO D1
+00:0000133A 11C11B4F        	   490:     move.b  D1,POWERUP_C   ; RESET COLLISION FLAG
+00:0000133E 4E75            	   491:     rts
+                            	   492:     
+                            	   493: RESET_GROWTH_POSITION::
+00:00001340 7200            	   494:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:00001342 12381B04        	   495:     move.b  SCREEN_W,D1          ; Place Screen width in D1
+00:00001346 21C11B50        	   496:     move.l  D1,GROWTH_X    ; Enemy X Position
+00:0000134A 4E75            	   497:     rts
+                            	   498: 
+                            	   499: *-----------------------------------------------------------
+                            	   500: * Subroutine    :: Draw
+                            	   501: * Description   :: Draw Screen
+                            	   502: *-----------------------------------------------------------
+                            	   503: DRAW:: 
+                            	   504: 
+                            	   505:     ; Clear the screen
+00:0000134C 61000704        	   506:     bsr     CLEAR_SCREEN
+                            	   507: 
+00:00001350 6100035A        	   508:     bsr     DRAW_SKY                ; Draw Sky at level 3
+00:00001354 61000000        	   509:     bsr     DRAW_CLOUD              ; Draw Cloud at level 3
+00:00001358 61000668        	   510:     bsr     DRAW_PLYR_DATA          ; Draw Draw Score, HUD, Player X and Y
+00:0000135C 61000240        	   511:     bsr     DRAW_GND                ; DRAW GROUND
+00:00001360 610002E2        	   512:     bsr     DRAW_GROUND             ; Draw ground at level 2
+00:00001364 61000108        	   513:     bsr     DRAW_PLAYER             ; Draw Player
+00:00001368 6100013E        	   514:     bsr     DRAW_ENEMY              ; Draw Enemy
+00:0000136C 6100016A        	   515:     bsr     DRAW_ENEMY2             ; Draw Enemy
+00:00001370 61000196        	   516:     bsr     DRAW_ENEMY3             ; Draw Enemy
+00:00001374 610001C4        	   517:     bsr     DRAW_POWERUP            ; DRAW POWERUP
+00:00001378 610001F2        	   518:     bsr     DRAW_GROWTH             ; Draw GROWTH
+00:0000137C 4E75            	   519:     rts                             ; Return to subroutine
+                            	   520: 
+                            	   521: *-----------------------------------------------------------
+                            	   522: * Subroutine    :: Player is on Ground
+                            	   523: * Description   :: Check if the Player is on or off Ground
+                            	   524: *-----------------------------------------------------------
+                            	   525: IS_PLAYER_ON_GND::
+                            	   526:     ; Check if Player is on Ground
+00:0000137E 7200            	   527:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:00001380 7400            	   528:     clr.l   D2                      ; Clear contents of D2 (XOR is faster)
+00:00001382 12381B06        	   529:     move.b  SCREEN_H,D1          ; Place Screen width in D1
+00:00001386 82FC0002        	   530:     divu    #02,D1          ; divide by 2 for center on Y Axis
+00:0000138A 24381B14        	   531:     move.l  PLAYER_Y,D2          ; Player Y Position
+00:0000138E B441            	   532:     CMP     D1,D2          ; Compare middle of Screen with Players Y Position 
+00:00001390 6C04            	   533:     bge     SET_ON_GROUND           ; The Player is on the Ground Plane
+00:00001392 6D22            	   534:     blt     SET_OFF_GROUND          ; The Player is off the Ground
+00:00001394 4E75            	   535:     rts                             ; Return to subroutine
+                            	   536: 
+                            	   537: 
+                            	   538: *-----------------------------------------------------------
+                            	   539: * Subroutine    :: On Ground
+                            	   540: * Description   :: Set the Player On Ground
+                            	   541: *-----------------------------------------------------------
+                            	   542: SET_ON_GROUND::
+00:00001396 7200            	   543:     clr.l   D1                          ; Clear contents of D1 (XOR is faster)
+00:00001398 32381B06        	   544:     move.w  SCREEN_H,D1              ; Place Screen width in D1
+00:0000139C 82FC0002        	   545:     divu    #02,D1              ; divide by 2 for center on Y Axis
+00:000013A0 21C11B14        	   546:     move.l  D1,PLAYER_Y        ; Reset the Player Y Position
+00:000013A4 7200            	   547:     clr.l   D1                          ; Clear contents of D1 (XOR is faster)
+00:000013A6 7200            	   548:     move.l  #00,D1              ; Player Velocity
+00:000013A8 21C11B20        	   549:     move.l  D1,PLYR_VELOCITY   ; Set Player Velocity
+00:000013AC 21FC000000011B28	   550:     move.l  #GND_TRUE,PLYR_ON_GND     ; Player is on Ground
+00:000013B4 4E75            	   551:     rts
+                            	   552: 
+                            	   553: *-----------------------------------------------------------
+                            	   554: * Subroutine    :: Off Ground
+                            	   555: * Description   :: Set the Player Off Ground
+                            	   556: *-----------------------------------------------------------
+                            	   557: SET_OFF_GROUND::
+00:000013B6 21FC000000001B28	   558:     move.l  #GND_FALSE,PLYR_ON_GND     ; Player if off Ground
+00:000013BE 4E75            	   559:     rts                                 ; Return to subroutine
+                            	   560: *-----------------------------------------------------------
+                            	   561: * Subroutine    :: Jump
+                            	   562: * Description   :: Perform a Jump
+                            	   563: *-----------------------------------------------------------
+                            	   564: JUMP::
+00:000013C0 21FC000000201B08	   565:     move.l  #$20,CURRENT_KEY
+00:000013C8 0CB8000000011B28	   566:     cmp.l   #GND_TRUE,PLYR_ON_GND       ; Player is on the Ground ?
+00:000013D0 6702            	   567:     beq     PERFORM_JUMP                ; Do Jump
+00:000013D2 600C            	   568:     bra     JUMP_DONE               
+                            	   569: PERFORM_JUMP::
+00:000013D4 613C            	   570:     bsr     PLAY_JUMP                   ; Play jump sound
+00:000013D6 21FCFFFFFFF41B20	   571:     move.l  #PLYR_JUMP_V,PLYR_VELOCITY  ; Set the players velocity to true
+00:000013DE 4E75            	   572:     rts                                 ; Return to subroutine
+                            	   573: JUMP_DONE::
+00:000013E0 4E75            	   574:     rts                                 ; Return to subroutine
+                            	   575: 
+                            	   576: *-----------------------------------------------------------
+                            	   577: * Subroutine    :: Idle
+                            	   578: * Description   :: Perform a Idle
+                            	   579: *----------------------------------------------------------- 
+                            	   580: IDLE::
+00:000013E2 6712            	   581:     beq     PLAY_RUN                    ; Play Run Wav
+00:000013E4 4E75            	   582:     rts                                 ; Return to subroutine
+                            	   583: 
+                            	   584: *-----------------------------------------------------------
+                            	   585: * Subroutines   :: Sound Load and Play
+                            	   586: * Description   :: Initialise game sounds into memory 
+                            	   587: * Current Sounds are RUN, JUMP and Opps for Collision
+                            	   588: *-----------------------------------------------------------
+                            	   589: RUN_LOAD::
+00:000013E6 43F81B89        	   590:     lea     RUN_WAV,A1              ; Load Wav File into A1
+00:000013EA 323C0000        	   591:     move    #RUN_INDEX,D1              ; Assign it INDEX
+00:000013EE 303C0047        	   592:     move    #71,D0              ; Load into memory
+00:000013F2 4E4F            	   593:     trap    #15                         ; Trap (Perform action)
+00:000013F4 4E75            	   594:     rts                                 ; Return to subroutine
+                            	   595: 
+                            	   596: PLAY_RUN::
+00:000013F6 323C0000        	   597:     move    #RUN_INDEX,D1              ; Load Sound INDEX
+00:000013FA 303C0048        	   598:     move    #72,D0              ; Play Sound
+00:000013FE 4E4F            	   599:     trap    #15                         ; Trap (Perform action)
+00:00001400 4E75            	   600:     rts                                 ; Return to subroutine
+                            	   601: 
+                            	   602: JUMP_LOAD::
+00:00001402 43F81B80        	   603:     lea     JUMP_WAV,A1              ; Load Wav File into A1
+00:00001406 323C0001        	   604:     move    #JMP_INDEX,D1              ; Assign it INDEX
+00:0000140A 303C0047        	   605:     move    #71,D0              ; Load into memory
+00:0000140E 4E4F            	   606:     trap    #15                         ; Trap (Perform action)
+00:00001410 4E75            	   607:     rts                                 ; Return to subroutine
+                            	   608: 
+                            	   609: PLAY_JUMP::
+00:00001412 303C004C        	   610:     move    #76,D0              ; STOPS ALL PREVIOUS SOUNDS TO ALLOW JUMP TO PLAY
+00:00001416 7403            	   611:     move.l  #3,D2
+00:00001418 4E4F            	   612:     trap    #15
+                            	   613:     
+00:0000141A 323C0001        	   614:     move    #JMP_INDEX,D1              ; Load Sound INDEX
+00:0000141E 303C0048        	   615:     move    #72,D0              ; Play Sound
+00:00001422 4E4F            	   616:     trap    #15                         ; Trap (Perform action)
+00:00001424 4E75            	   617:     rts                                 ; Return to subroutine
+                            	   618: 
+                            	   619: OPPS_LOAD::
+00:00001426 43F81B93        	   620:     lea     OPPS_WAV,A1              ; Load Wav File into A1
+00:0000142A 323C0002        	   621:     move    #OPPS_INDEX,D1              ; Assign it INDEX
+00:0000142E 303C0047        	   622:     move    #71,D0              ; Load into memory
+00:00001432 4E4F            	   623:     trap    #15                         ; Trap (Perform action)
+00:00001434 4E75            	   624:     rts                                 ; Return to subroutine
+                            	   625: 
+                            	   626: PLAY_OPPS::
+00:00001436 303C004C        	   627:     move    #76,D0              ; STOP ALL SOUNDS TO ALLOW OPPS TO PLAY
+00:0000143A 7403            	   628:     move.l  #3,D2
+00:0000143C 4E4F            	   629:     trap    #15
+                            	   630:     
+00:0000143E 323C0002        	   631:     move    #OPPS_INDEX,D1              ; Load Sound INDEX
+00:00001442 303C0048        	   632:     move    #72,D0              ; Play Sound
+00:00001446 4E4F            	   633:     trap    #15                         ; Trap (Perform action)
+00:00001448 4E75            	   634:     rts                                 ; Return to subroutine
+                            	   635:     
+                            	   636: POWERUP_LOAD::
+00:0000144A 43F81B9B        	   637:     lea     POWERUP_WAV,A1          ; Load Wav File into A1
+00:0000144E 323C0003        	   638:     move    #POWERUP_INDEX,D1          ; Assign it INDEX
+00:00001452 303C0047        	   639:     move    #71,D0          ; Load into memory
+00:00001456 4E4F            	   640:     trap    #15                         ; Trap (Perform action)
+00:00001458 4E75            	   641:     rts                                 ; Return to subroutine
+                            	   642:     
+                            	   643: PLAY_POWERUP::
+00:0000145A 303C004C        	   644:     move    #76,D0              ; STOP ALL SOUNDS TO ALLOW POWERUP TO PLAY
+00:0000145E 7403            	   645:     move.l  #3,D2
+00:00001460 4E4F            	   646:     trap    #15
+                            	   647:     
+00:00001462 323C0003        	   648:     move    #POWERUP_INDEX,D1          ; Load Sound INDEX
+00:00001466 303C0048        	   649:     move    #72,D0          ; Play Sound
+00:0000146A 4E4F            	   650:     trap    #15                         ; Trap (Perform action)
+00:0000146C 4E75            	   651:     rts                                 ; Return to subroutine
+                            	   652: 
+                            	   653: *-----------------------------------------------------------
+                            	   654: * Subroutine    :: Draw Player
+                            	   655: * Description   :: Draw Player Square
+                            	   656: *-----------------------------------------------------------
+                            	   657: DRAW_PLAYER::
+                            	   658:     ; Set Pixel Colors
+00:0000146E 223C00FFFFFF    	   659:     move.l  #WHITE,D1              ; Set Pen color
+00:00001474 103C0050        	   660:     move.b  #80,D0              ; Task for Pen Color
+00:00001478 4E4F            	   661:     trap    #15                         ; Trap (Perform action)
+00:0000147A 103C0051        	   662:     move.b  #81,D0              ; Task for Fill Color
+00:0000147E 4E4F            	   663:     trap    #15            ; Trap (Perform action)
+                            	   664: 
+                            	   665:     ; Set X, Y, Width and Height
+00:00001480 22381B10        	   666:     move.l  PLAYER_X,D1              ; X
+00:00001484 24381B14        	   667:     move.l  PLAYER_Y,D2              ; Y
+00:00001488 26381B10        	   668:     move.l  PLAYER_X,D3
+00:0000148C 5A83            	   669:     add.l   #PLYR_W_INIT,D3          ; Width
+00:0000148E 28381B14        	   670:     move.l  PLAYER_Y,D4 
+00:00001492 5684            	   671:     add.l   #PLYR_H_INIT,D4          ; Height
+                            	   672:     
+                            	   673:     ; Draw Player
+00:00001494 103C0057        	   674:     move.b  #87,D0              ; Draw Player
+00:00001498 4E4F            	   675:     trap    #15                         ; Trap (Perform action)
+00:0000149A 6102            	   676:     bsr     CLEAR_FILL                  ; Clears Fill Color
+00:0000149C 4E75            	   677:     rts                                 ; Return to subroutine
+                            	   678: *-----------------------------------------------------------
+                            	   679: * Subroutine    :: Clear Fill
+                            	   680: * Description   :: Clear Fill Color (is necessary after filling player/enemy)
+                            	   681: *-----------------------------------------------------------
+                            	   682: CLEAR_FILL::
+00:0000149E 43F81ADE        	   683:     lea     BLACK,A1   ; Set Fill Color
+00:000014A2 61000590        	   684:     bsr     PRINT
+00:000014A6 4E75            	   685:     rts
+                            	   686: *-----------------------------------------------------------
+                            	   687: * Subroutine    :: Draw Enemy
+                            	   688: * Description   :: Draw Enemy Square
+                            	   689: *-----------------------------------------------------------
+                            	   690: DRAW_ENEMY::
+                            	   691:     ; Set Pixel Colors
+00:000014A8 223C000000FF    	   692:     move.l  #RED,D1          ; Set Background color
+00:000014AE 103C0050        	   693:     move.b  #80,D0          ; Task for Background Color
+00:000014B2 4E4F            	   694:     trap    #15                         ; Trap (Perform action)
+00:000014B4 103C0051        	   695:     move.b  #81,D0          ; Task for Fill Color
+00:000014B8 4E4F            	   696:     trap    #15                         ; Trap (Perform action)
+                            	   697: 
+                            	   698:     ; Set X, Y, Width and Height
+00:000014BA 22381B2C        	   699:     move.l  ENEMY_X,D1          ; X
+00:000014BE 24381B30        	   700:     move.l  ENEMY_Y,D2          ; Y
+00:000014C2 26381B2C        	   701:     move.l  ENEMY_X,D3
+00:000014C6 5A83            	   702:     add.l   #ENMY_W_INIT,D3          ; Width
+00:000014C8 28381B30        	   703:     move.l  ENEMY_Y,D4 
+00:000014CC 5684            	   704:     add.l   #ENMY_H_INIT,D4          ; Height
+                            	   705:     
+                            	   706:     ; Draw Enemy    
+00:000014CE 103C0057        	   707:     move.b  #87,D0              ; Draw Enemy
+00:000014D2 4E4F            	   708:     trap    #15                         ; Trap (Perform action)
+00:000014D4 61C8            	   709:     bsr     CLEAR_FILL
+00:000014D6 4E75            	   710:     rts                                 ; Return to subroutine
+                            	   711:     
+                            	   712: DRAW_ENEMY2::
+                            	   713:     ; Set Pixel Colors
+00:000014D8 223C000000FF    	   714:     move.l  #RED,D1          ; Set Background color
+00:000014DE 103C0050        	   715:     move.b  #80,D0          ; Task for Background Color
+00:000014E2 4E4F            	   716:     trap    #15                         ; Trap (Perform action)
+00:000014E4 103C0051        	   717:     move.b  #81,D0          ; Task for Fill Color
+00:000014E8 4E4F            	   718:     trap    #15                         ; Trap (Perform action)
+                            	   719: 
+                            	   720:     ; Set X, Y, Width and Height
+00:000014EA 22381B35        	   721:     move.l  ENEMY2_X,D1         ; X
+00:000014EE 24381B39        	   722:     move.l  ENEMY2_Y,D2         ; Y
+00:000014F2 26381B35        	   723:     move.l  ENEMY2_X,D3
+00:000014F6 5A83            	   724:     add.l   #ENMY_W_INIT,D3          ; Width
+00:000014F8 28381B39        	   725:     move.l  ENEMY2_Y,D4 
+00:000014FC 5684            	   726:     add.l   #ENMY_H_INIT,D4          ; Height
+                            	   727:     
+                            	   728:     ; Draw Enemy    
+00:000014FE 103C0057        	   729:     move.b  #87,D0              ; Draw Enemy
+00:00001502 4E4F            	   730:     trap    #15                         ; Trap (Perform action)
+00:00001504 6198            	   731:     bsr     CLEAR_FILL
+00:00001506 4E75            	   732:     rts   
+                            	   733:     
+                            	   734: DRAW_ENEMY3::
+                            	   735:     ; Set Pixel Colors
+00:00001508 223C000000FF    	   736:     move.l  #RED,D1          ; Set Background color
+00:0000150E 103C0050        	   737:     move.b  #80,D0          ; Task for Background Color
+00:00001512 4E4F            	   738:     trap    #15                         ; Trap (Perform action)
+00:00001514 103C0051        	   739:     move.b  #81,D0          ; Task for Fill Color
+00:00001518 4E4F            	   740:     trap    #15                         ; Trap (Perform action)
+                            	   741: 
+                            	   742:     ; Set X, Y, Width and Height
+00:0000151A 22381B3E        	   743:     move.l  ENEMY3_X,D1         ; X
+00:0000151E 24381B42        	   744:     move.l  ENEMY3_Y,D2         ; Y
+00:00001522 26381B3E        	   745:     move.l  ENEMY3_X,D3
+00:00001526 5A83            	   746:     add.l   #ENMY_W_INIT,D3          ; Width
+00:00001528 28381B42        	   747:     move.l  ENEMY3_Y,D4 
+00:0000152C 5684            	   748:     add.l   #ENMY_H_INIT,D4          ; Height
+                            	   749:     
+                            	   750:     ; Draw Enemy    
+00:0000152E 103C0057        	   751:     move.b  #87,D0              ; Draw Enemy
+00:00001532 4E4F            	   752:     trap    #15                         ; Trap (Perform action)
+00:00001534 6100FF68        	   753:     bsr     CLEAR_FILL
+00:00001538 4E75            	   754:     rts   
+                            	   755:     
+                            	   756: DRAW_POWERUP::
+                            	   757:     ; Set Pixel Colors
+00:0000153A 223C0000FF00    	   758:     move.l  #GREEN,D1        ; Set Background color
+00:00001540 103C0050        	   759:     move.b  #80,D0          ; Task for Background Color
+00:00001544 4E4F            	   760:     trap    #15                         ; Trap (Perform action)
+00:00001546 103C0051        	   761:     move.b  #81,D0          ; Task for Fill Color
+00:0000154A 4E4F            	   762:     trap    #15                         ; Trap (Perform action)
+                            	   763: 
+                            	   764:     ; Set X, Y, Width and Height
+00:0000154C 22381B47        	   765:     move.l  POWERUP_X,D1      ; X
+00:00001550 24381B4B        	   766:     move.l  POWERUP_Y,D2      ; Y
+00:00001554 26381B47        	   767:     move.l  POWERUP_X,D3
+00:00001558 5A83            	   768:     add.l   #POWERUP_W_INIT,D3      ; Width
+00:0000155A 28381B4B        	   769:     move.l  POWERUP_Y,D4 
+00:0000155E 5684            	   770:     add.l   #POWERUP_H_INIT,D4      ; Height
+                            	   771:     
+                            	   772:     ; Draw POWERUP    
+00:00001560 103C0057        	   773:     move.b  #87,D0              ; Draw POWERUP
+00:00001564 4E4F            	   774:     trap    #15                         ; Trap (Perform action)
+00:00001566 6100FF36        	   775:     bsr     CLEAR_FILL
+00:0000156A 4E75            	   776:     rts                                 ; Return to subroutine
+                            	   777:     
+                            	   778: DRAW_GROWTH::
+                            	   779:     ; Set Pixel Colors
+00:0000156C 223C0000D7FF    	   780:     move.l  #GOLD,D1          ; Set Background color
+00:00001572 103C0050        	   781:     move.b  #80,D0          ; Task for Background Color
+00:00001576 4E4F            	   782:     trap    #15                     ; Trap (Perform action)
+00:00001578 103C0051        	   783:     move.b  #81,D0          ; Fills Rectangle with the same color as the outlines
+00:0000157C 4E4F            	   784:     trap    #15
+                            	   785: 
+                            	   786:     ; Set X, Y, Width and Height
+00:0000157E 22381B50        	   787:     move.l  GROWTH_X,D1          ; X
+                            	   788:    ; sub.l   #3,D1
+00:00001582 24381B54        	   789:     move.l  GROWTH_Y,D2          ; Y
+                            	   790:     ;sub.l   #3,D2
+00:00001586 26381B50        	   791:     move.l  GROWTH_X,D3      
+00:0000158A 5883            	   792:     add.l   #GROWTH_W,D3          ; Width
+00:0000158C 28381B54        	   793:     move.l  GROWTH_Y,D4          
+00:00001590 5884            	   794:     add.l   #GROWTH_H,D4          ; Height
+                            	   795:     
+                            	   796:     ; Draw GROWTH
+00:00001592 103C0057        	   797:     move.b  #87,D0          ; Draw GROWTH
+00:00001596 4E4F            	   798:     trap    #15                     ; Trap (Perform action)
+00:00001598 6100FF04        	   799:     bsr     CLEAR_FILL
+00:0000159C 4E75            	   800:     rts                             ; Return to subroutine
+                            	   801:     
+                            	   802: DRAW_GND::
+                            	   803:         ; Set Pixel Colors
+00:0000159E 223C000000FF    	   804:     move.l  #RED,D1            ; Set Background color
+00:000015A4 103C0050        	   805:     move.b  #80,D0          ; Task for Background Color
+00:000015A8 4E4F            	   806:     trap    #15                         ; Trap (Perform action)
+00:000015AA 103C0051        	   807:     move.b  #81,D0          ; Task for Fill Color
+00:000015AE 4E4F            	   808:     trap    #15                         ; Trap (Perform action)
+                            	   809: 
+                            	   810:     ; Set X, Y, Width and Height
+00:000015B0 22381B5C        	   811:     move.l  GND_X,D1            ; X
+00:000015B4 24381B60        	   812:     move.l  GND_Y,D2            ; Y
+00:000015B8 26381B5C        	   813:     move.l  GND_X,D3
+00:000015BC D6BC00002710    	   814:     add.l   #GND_W,D3            ; Width
+00:000015C2 28381B60        	   815:     move.l  GND_Y,D4 
+00:000015C6 5284            	   816:     add.l   #GND_H,D4                ; Height
+                            	   817:     
+                            	   818:     ; Draw GROUND    
+00:000015C8 103C0057        	   819:     move.b  #87,D0              ; Draw GROUND
+00:000015CC 4E4F            	   820:     trap    #15                         ; Trap (Perform action)
+00:000015CE 6100FECE        	   821:     bsr     CLEAR_FILL
+00:000015D2 4E75            	   822:     rts  
+                            	   823:     
+                            	   824: DRAW_H_BAR::
+                            	   825: 
+                            	   826:     ; Set Pixel Colors
+00:000015D4 223C000000FF    	   827:     move.l  #RED,D1          ; Set Background color
+00:000015DA 103C0050        	   828:     move.b  #80,D0          ; Task for Background Color
+00:000015DE 4E4F            	   829:     trap    #15                         ; Trap (Perform action)
+00:000015E0 103C0051        	   830:     move.b  #81,D0          ; Task for Fill Color
+00:000015E4 4E4F            	   831:     trap    #15                         ; Trap (Perform action)
+                            	   832:     
+                            	   833:     ; Set X, Y, Width and Height
+00:000015E6 22381B64        	   834:     move.l  HEALTH_X,D1         ; X
+00:000015EA 24381B68        	   835:     move.l  HEALTH_Y,D2         ; Y
+00:000015EE 26381B64        	   836:     move.l  HEALTH_X,D3
+00:000015F2 D6BC00000064    	   837:     add.l   #100,D3         ; Width
+00:000015F8 28381B68        	   838:     move.l  HEALTH_Y,D4 
+00:000015FC D8BC0000000A    	   839:     add.l   #10,D4         ; Height
+                            	   840:     
+                            	   841:     ; Draw HEALTHBAR RED   
+00:00001602 103C0057        	   842:     move.b  #87,D0         ; Draw HEALTHBAR
+00:00001606 4E4F            	   843:     trap    #15                         ; Trap (Perform action)
+00:00001608 6100FE94        	   844:     bsr     CLEAR_FILL
+                            	   845:     
+                            	   846:     ; Set Pixel Colors
+00:0000160C 223C0000FF00    	   847:     move.l  #GREEN,D1          ; Set Background color
+00:00001612 103C0050        	   848:     move.b  #80,D0          ; Task for Background Color
+00:00001616 4E4F            	   849:     trap    #15                         ; Trap (Perform action)
+00:00001618 103C0051        	   850:     move.b  #81,D0          ; Task for Fill Color
+00:0000161C 4E4F            	   851:     trap    #15                         ; Trap (Perform action)
+                            	   852:     
+                            	   853:     ; Set X, Y, Width and Height
+00:0000161E 22381B64        	   854:     move.l  HEALTH_X,D1         ; X
+00:00001622 24381B68        	   855:     move.l  HEALTH_Y,D2         ; Y
+00:00001626 26381B64        	   856:     move.l  HEALTH_X,D3
+00:0000162A D6B81B6C        	   857:     add.l   HEALTH_W,D3         ; Width
+00:0000162E 28381B68        	   858:     move.l  HEALTH_Y,D4 
+00:00001632 D8BC0000000A    	   859:     add.l   #HEALTH_H,D4         ; Height
+                            	   860:     
+                            	   861:     ; Draw HEALTHBAR GREEN   
+00:00001638 103C0057        	   862:     move.b  #87,D0         ; Draw HEALTHBAR
+00:0000163C 4E4F            	   863:     trap    #15                         ; Trap (Perform action)
+00:0000163E 6100FE5E        	   864:     bsr     CLEAR_FILL
+                            	   865:     
+00:00001642 4E75            	   866:     rts 
+                            	   867: *-----------------------------------------------------------
+                            	   868: * Subroutine    :: Draw Ground
+                            	   869: * Description   :: Draw Ground
+                            	   870: *-----------------------------------------------------------
+                            	   871: DRAW_GROUND::
+00:00001644 4AB81B78        	   872:     tst.l   LEVEL2_FLAG
+00:00001648 6760            	   873:     beq     SKIP_DRAW
+                            	   874:     ; Set Pixel Colors
+00:0000164A 223C0000FF00    	   875:     move.l  #GREEN,D1          ; Set Background color
+00:00001650 103C0050        	   876:     move.b  #80,D0          ; Task for Background Color
+00:00001654 4E4F            	   877:     trap    #15                     ; Trap (Perform action)
+00:00001656 103C0051        	   878:     move.b  #81,D0          ; Task for Fill Color
+00:0000165A 4E4F            	   879:     trap    #15                     ; Trap (Perform action)
+                            	   880: 
+                            	   881:     ; Set X, Y, Width and Height
+00:0000165C 7200            	   882:     clr.l   D1
+00:0000165E 7400            	   883:     clr.l   D2
+00:00001660 7600            	   884:     clr.l   D3
+00:00001662 7800            	   885:     clr.l   D4
+00:00001664 7200            	   886:     move.l  #0,D1          ; LEFTMOST X
+00:00001666 34381B06        	   887:     move.w  SCREEN_H,D2          ; UPPER Y
+00:0000166A 84FC0002        	   888:     divu    #2,D2
+00:0000166E D4BC00000009    	   889:     add.l   #9,D2
+00:00001674 36381B04        	   890:     move.w  SCREEN_W,D3          ; RIGHTMOST X
+00:00001678 38381B06        	   891:     move.w  SCREEN_H,D4          ; LOWER Y
+                            	   892:     
+                            	   893:     ; Draw Ground    
+00:0000167C 103C0057        	   894:     move.b  #87,D0          ; Draw Enemy
+00:00001680 4E4F            	   895:     trap    #15                     ; Trap (Perform action)
+                            	   896:     
+                            	   897:     ; Set Pixel Colors
+00:00001682 223C00009900    	   898:     move.l  #DARK_GREEN,D1          ; Set Background color
+00:00001688 103C0050        	   899:     move.b  #80,D0          ; Task for Background Color
+00:0000168C 4E4F            	   900:     trap    #15                     ; Trap (Perform action)
+00:0000168E 103C0051        	   901:     move.b  #81,D0          ; Task for Fill Color
+00:00001692 4E4F            	   902:     trap    #15                     ; Trap (Perform action)
+                            	   903:     
+                            	   904:     ; Alter dimensions from above
+00:00001694 7200            	   905:     move.l  #0,D1
+00:00001696 2802            	   906:     move.l  D2,D4
+00:00001698 D8BC00000014    	   907:     add.l   #20,D4
+                            	   908:     
+                            	   909:     ; Draw Shading
+00:0000169E 103C0057        	   910:     move.b  #87,D0          ; Draw Enemy
+00:000016A2 4E4F            	   911:     trap    #15                     ; Trap (Perform action)
+00:000016A4 6100FDF8        	   912:     bsr     CLEAR_FILL
+00:000016A8 4E75            	   913:     rts                             ; Return to subroutine
+                            	   914:     
+                            	   915: SKIP_DRAW::
+00:000016AA 4E75            	   916:     rts
+                            	   917: *-----------------------------------------------------------
+                            	   918: * Subroutine    :: Draw Sky
+                            	   919: * Description   :: Draw Sky Square
+                            	   920: *-----------------------------------------------------------
+                            	   921: DRAW_SKY::
+00:000016AC 4A381B79        	   922:     tst.b   LEVEL3_FLAG
+00:000016B0 67F8            	   923:     beq     SKIP_DRAW
+                            	   924:     ; Set Pixel Colors
+00:000016B2 4241            	   925:     clr     d1
+00:000016B4 323C0005        	   926:     move.w  #$0005,d1
+00:000016B8 610003B2        	   927:     bsr     MOVECURSOR
+00:000016BC 43F81AE7        	   928:     lea     LIGHT_BLUE,A1
+00:000016C0 61000372        	   929:     bsr     PRINT
+00:000016C4 323C0000        	   930:     move.w  #B417,d1
+00:000016C8 610003A2        	   931:     bsr     MOVECURSOR
+                            	   932: 
+00:000016CC 6100FDD0        	   933:     bsr     CLEAR_FILL
+00:000016D0 4E75            	   934:     rts                             ; Return to subroutine
+                            	   935: 
+                            	   936: *-----------------------------------------------------------
+                            	   937: * Subroutine    :: Collision Checks
+                            	   938: * Description   :: Axis-Aligned Bounding Box Collision Detection
+                            	   939: * Algorithm checks for overlap on the 4 sides of the Player and 
+                            	   940: * Enemy rectangles
+                            	   941: * PLAYER_X <= ENEMY_X + ENEMY_W &&
+                            	   942: * PLAYER_X + PLAYER_W >= ENEMY_X &&
+                            	   943: * PLAYER_Y <= ENEMY_Y + ENEMY_H &&
+                            	   944: * PLAYER_H + PLAYER_Y >= ENEMY_Y
+                            	   945: *-----------------------------------------------------------
+                            	   946: CHECK_ALL_COLLISIONS::
+00:000016D2 6112            	   947:     bsr     CHECK_COLLISIONS         ; CHECKING FOR COLLISIONS WITH ENEMIES
+00:000016D4 610000D4        	   948:     bsr     CHECK_COLLISIONS2
+00:000016D8 6100011A        	   949:     bsr     CHECK_COLLISIONS3
+00:000016DC 61000160        	   950:     bsr     CHECK_POWERUP_COLLISIONS ; CHECKING FOR POWERUP COLLISIONS 
+00:000016E0 610001A6        	   951:     bsr     CHECK_GROWTH_COLLISIONS
+                            	   952:     
+00:000016E4 4E75            	   953:     rts
+                            	   954:     
+                            	   955: CHECK_COLLISIONS::
+00:000016E6 7200            	   956:     clr.l   D1                      ; Clear D1
+00:000016E8 7400            	   957:     clr.l   D2                      ; Clear D2
+00:000016EA 45F81B34        	   958:     lea     ENEMY_C,A2         ; LOADING THE COLLISION FLAG INTO A2 IN PREPARATION FOR A POTENTIAL COLLISON
+                            	   959:     
+                            	   960: PLAYER_X_LTE_TO_ENEMY_X_PLUS_W::
+00:000016EE 22381B10        	   961:     move.l  PLAYER_X,D1          ; Move Player X to D1
+00:000016F2 24381B2C        	   962:     move.l  ENEMY_X,D2          ; Move Enemy X to D2
+00:000016F6 5A82            	   963:     add.l   #ENMY_W_INIT,D2          ; Set Enemy width X + Width    ADDED #
+00:000016F8 B282            	   964:     cmp.l   D2,D1          ; Do the Overlap ?              SWAPPED D2 AND D1
+00:000016FA 6F02            	   965:     ble     PLAYER_X_PLUS_W_LTE_TO_ENEMY_X  ; Less than or Equal ?
+00:000016FC 6026            	   966:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	   967:     
+                            	   968: PLAYER_X_PLUS_W_LTE_TO_ENEMY_X::     ; Check player is not           ADDED #
+00:000016FE 5A81            	   969:     add.l   #PLYR_W_INIT,D1          ; Move Player Width to D1
+00:00001700 24381B2C        	   970:     move.l  ENEMY_X,D2          ; Move Enemy X to D2
+00:00001704 B481            	   971:     cmp.l   D1,D2          ; Do they OverLap ?
+00:00001706 6F02            	   972:     ble     PLAYER_Y_LTE_TO_ENEMY_Y_PLUS_H  ; Less than or Equal    CHANGED bge TO ble
+00:00001708 601A            	   973:     bra     COLLISION_CHECK_DONE    ; If not no collision   
+                            	   974:     
+                            	   975: PLAYER_Y_LTE_TO_ENEMY_Y_PLUS_H::     
+00:0000170A 22381B14        	   976:     move.l  PLAYER_Y,D1          ; Move Player Y to D1
+00:0000170E 24381B30        	   977:     move.l  ENEMY_Y,D2          ; Move Enemy Y to D2
+00:00001712 5782            	   978:     sub.l   #ENMY_H_INIT,D2          ; Set Enemy Height to D2       ADDED #, ADD CHANGED TO SUB
+00:00001714 B481            	   979:     cmp.l   D1,D2          ; Do they Overlap ?
+00:00001716 6F02            	   980:     ble     PLAYER_Y_PLUS_H_LTE_TO_ENEMY_Y  ; Less than or Equal
+00:00001718 600A            	   981:     bra     COLLISION_CHECK_DONE    ; If not no collision 
+                            	   982:     
+                            	   983: PLAYER_Y_PLUS_H_LTE_TO_ENEMY_Y::     ; Less than or Equal ?          CHANGED ADD TO SUB
+00:0000171A 5781            	   984:     sub.l   #PLYR_H_INIT,D1         ; Add Player Height to D1       ADDED #
+00:0000171C 24381B30        	   985:     move.l  ENEMY_Y,D2          ; Move Enemy Height to D2  
+00:00001720 B481            	   986:     cmp.l   D1,D2          ; Do they OverLap ?
+00:00001722 6C02            	   987:     bge     COLLISION               ; Collision !
+                            	   988:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	   989:     
+                            	   990: COLLISION_CHECK_DONE::               
+                            	   991:     
+00:00001724 4E75            	   992:     rts                             ; Return to subroutine
+                            	   993: 
+                            	   994: COLLISION::
+00:00001726 4A12            	   995:     tst.b   (A2)                    ; TESTS THE COLLISION FLAG TO AVOID MULTIPLE COLLISIONS
+00:00001728 66FA            	   996:     BNE     COLLISION_CHECK_DONE
+00:0000172A 6100FD0A        	   997:     bsr     PLAY_OPPS               ; Play Opps Wav
+00:0000172E 43F81B70        	   998:     lea     DAMAGE,A1
+00:00001732 2211            	   999:     move.l  (A1),D1
+                            	  1000:     
+                            	  1001:     
+                            	  1002:     
+00:00001734 93B81B0C        	  1003:     sub.l   D1,PLAYER_HEALTH       ; Subtract damage from player health
+00:00001738 93B81B6C        	  1004:     sub.l   D1,HEALTH_W
+00:0000173C 14BC0001        	  1005:     move.b  #01,(A2)        ; SET COLLISION FLAG TO 1 (A HIT HAS BEEN REGISTERED)
+                            	  1006:     
+                            	  1007:     
+00:00001740 4AB81B0C        	  1008:     tst.l   PLAYER_HEALTH           ; TESTS IF PLAYER HEALTH IS 0
+00:00001744 6F0001A4        	  1009:     ble     EXIT                    ; IF SO, GAME OVER
+                            	  1010:     
+00:00001748 22381B18        	  1011:     move.l  PLAYER_SCORE,D1      ; move PLAYER_SCORE TO D1
+00:0000174C 243C000003E8    	  1012:     move.l  #1000,D2      ; move 1000 TO D2
+00:00001752 B481            	  1013:     cmp.l   D1,D2      ; COMPARE PLAYER_SCORE TO 1000
+                            	  1014:     
+00:00001754 6C0A            	  1015:     bge     UPDATE_LOWSCORE         ; IF 1000 IS GREATER THAN PLAYER_SCORE, RESET SCORE TO 0 (THIS PREVENTS NEGATIVE SC
+                            	  1016:     
+00:00001756 04B8000003E81B18	  1017:     sub.l   #1000,PLAYER_SCORE   ; IF PLAYER_SCORE IS GREATER THAN 1000, SUBTRACT 1000 FROM PLAYER_SCORE UPON A COLLISI
+                            	  1018:     
+00:0000175E 4E75            	  1019:     rts                             ; Return to subroutine
+                            	  1020:     
+                            	  1021: UPDATE_LOWSCORE::
+00:00001760 21FC000000001B18	  1022:         move.l  #00,PLAYER_SCORE       ; Reset Player Score
+                            	  1023:         
+00:00001768 4E75            	  1024:         rts
+                            	  1025:     
+                            	  1026: POWERUP_COLLISION::
+00:0000176A 7200            	  1027:     clr.l   D1
+00:0000176C 7400            	  1028:     clr.l   D2
+                            	  1029:     
+00:0000176E 4A12            	  1030:     tst.b   (A2)                    ; TESTS THE COLLISION FLAG TO AVOID MULTIPLE COLLISIONS
+00:00001770 66B2            	  1031:     BNE     COLLISION_CHECK_DONE
+                            	  1032:     
+00:00001772 22381B0C        	  1033:     move.l  PLAYER_HEALTH,D1     ; MOVING PLAYER HEALTH TO D1
+00:00001776 7464            	  1034:     move.l  #100,D2     ; MOVING 100 (MAXIMUM HEALTH ALLOWED) TO D2
+00:00001778 B481            	  1035:     cmp.l   D1,D2     ; CHECKING IF PLAYER IS AT MAXIMUM HEALTH
+00:0000177A 6FA8            	  1036:     ble     COLLISION_CHECK_DONE
+                            	  1037:     
+00:0000177C 6100FCDC        	  1038:     bsr     PLAY_POWERUP            ; Play Opps Wav
+00:00001780 43F81B74        	  1039:     lea     HEAL,A1
+00:00001784 2211            	  1040:     move.l  (A1),D1
+                            	  1041:     
+00:00001786 D3B81B0C        	  1042:     add.l   D1,PLAYER_HEALTH       ; ADD HEALTH TO player health
+00:0000178A D3B81B6C        	  1043:     add.l   D1,HEALTH_W
+                            	  1044:     
+00:0000178E B481            	  1045:     cmp.l   D1,D2          ; CHECKING IF PLAYER IS AT MAXIMUM HEALTH
+00:00001790 6C06            	  1046:     bge     PREVENT_OVERHEAL
+                            	  1047:     
+00:00001792 14BC0001        	  1048:     move.b  #01,(A2)        ; SET COLLISION FLAG TO 1 (A HIT HAS BEEN REGISTERED)
+                            	  1049:     
+00:00001796 4E75            	  1050:     rts                             ; Return to subroutine
+                            	  1051:     
+                            	  1052: PREVENT_OVERHEAL::
+00:00001798 21FC000000641B0C	  1053:     move.l  #100,PLAYER_HEALTH   ; SET HEALTH TO 100
+00:000017A0 21FC000000641B6C	  1054:     move.l  #100,HEALTH_W        ; SET HEALTHBAR WIDTH TO 100
+                            	  1055:     
+00:000017A8 4E75            	  1056:     rts
+                            	  1057:     
+                            	  1058: CHECK_COLLISIONS2::
+00:000017AA 7200            	  1059:     clr.l   D1                      ; Clear D1
+00:000017AC 7400            	  1060:     clr.l   D2                      ; Clear D2
+00:000017AE 45F81B3D        	  1061:     lea     ENEMY2_C,A2          ; LOADING THE COLLISION FLAG INTO A2 IN PREPARATION FOR A POTENTIAL COLLISON
+                            	  1062:     
+                            	  1063: PLAYER_X_LTE_TO_ENEMY2_X_PLUS_W::
+00:000017B2 22381B10        	  1064:     move.l  PLAYER_X,D1          ; Move Player X to D1
+00:000017B6 24381B35        	  1065:     move.l  ENEMY2_X,D2         ; Move Enemy X to D2
+00:000017BA 5A82            	  1066:     add.l   #ENMY_W_INIT,D2         ; Set Enemy width X + Width
+00:000017BC B282            	  1067:     cmp.l   D2,D1          ; Do the Overlap ?
+00:000017BE 6F04            	  1068:     ble     PLAYER_X_PLUS_W_LTE_TO_ENEMY2_X  ; Less than or Equal ?
+00:000017C0 6000FF62        	  1069:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	  1070: PLAYER_X_PLUS_W_LTE_TO_ENEMY2_X::    ; Check player is not  
+00:000017C4 5A81            	  1071:     add.l   #PLYR_W_INIT,D1         ; Move Player Width to D1
+00:000017C6 24381B35        	  1072:     move.l  ENEMY2_X,D2         ; Move Enemy X to D2
+00:000017CA B481            	  1073:     cmp.l   D1,D2          ; Do they OverLap ?
+00:000017CC 6F04            	  1074:     ble     PLAYER_Y_LTE_TO_ENEMY2_Y_PLUS_H  ; Less than or Equal
+00:000017CE 6000FF54        	  1075:     bra     COLLISION_CHECK_DONE    ; If not no collision   
+                            	  1076: PLAYER_Y_LTE_TO_ENEMY2_Y_PLUS_H::     
+00:000017D2 22381B14        	  1077:     move.l  PLAYER_Y,D1          ; Move Player Y to D1
+00:000017D6 24381B39        	  1078:     move.l  ENEMY2_Y,D2         ; Move Enemy Y to D2
+00:000017DA 5782            	  1079:     sub.l   #ENMY_H_INIT,D2         ; Set Enemy Height to D2
+00:000017DC B481            	  1080:     cmp.l   D1,D2          ; Do they Overlap ?
+00:000017DE 6F04            	  1081:     ble     PLAYER_Y_PLUS_H_LTE_TO_ENEMY2_Y  ; Less than or Equal
+00:000017E0 6000FF42        	  1082:     bra     COLLISION_CHECK_DONE    ; If not no collision 
+                            	  1083: PLAYER_Y_PLUS_H_LTE_TO_ENEMY2_Y::    ; Less than or Equal ?
+00:000017E4 5781            	  1084:     sub.l   #PLYR_H_INIT,D1         ; Add Player Height to D1
+00:000017E6 24381B39        	  1085:     move.l  ENEMY2_Y,D2         ; Move Enemy Height to D2  
+00:000017EA B481            	  1086:     cmp.l   D1,D2          ; Do they OverLap ?
+00:000017EC 6C00FF38        	  1087:     bge     COLLISION               ; Collision !
+00:000017F0 6000FF32        	  1088:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	  1089:     
+                            	  1090: CHECK_COLLISIONS3::
+00:000017F4 7200            	  1091:     clr.l   D1                      ; Clear D1
+00:000017F6 7400            	  1092:     clr.l   D2                      ; Clear D2
+00:000017F8 45F81B46        	  1093:     lea     ENEMY3_C,A2        ; LOADING THE COLLISION FLAG INTO A2 IN PREPARATION FOR A POTENTIAL COLLISON
+                            	  1094:     
+                            	  1095: PLAYER_X_LTE_TO_ENEMY3_X_PLUS_W::
+00:000017FC 22381B10        	  1096:     move.l  PLAYER_X,D1          ; Move Player X to D1
+00:00001800 24381B3E        	  1097:     move.l  ENEMY3_X,D2         ; Move Enemy X to D2
+00:00001804 5A82            	  1098:     add.l   #ENMY_W_INIT,D2         ; Set Enemy width X + Width
+00:00001806 B282            	  1099:     cmp.l   D2,D1          ; Do the Overlap ?
+00:00001808 6F04            	  1100:     ble     PLAYER_X_PLUS_W_LTE_TO_ENEMY3_X  ; Less than or Equal ?
+00:0000180A 6000FF18        	  1101:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	  1102: PLAYER_X_PLUS_W_LTE_TO_ENEMY3_X::    ; Check player is not  
+00:0000180E 5A81            	  1103:     add.l   #PLYR_W_INIT,D1         ; Move Player Width to D1
+00:00001810 24381B3E        	  1104:     move.l  ENEMY3_X,D2         ; Move Enemy X to D2
+00:00001814 B481            	  1105:     cmp.l   D1,D2          ; Do they OverLap ?
+00:00001816 6F04            	  1106:     ble     PLAYER_Y_LTE_TO_ENEMY3_Y_PLUS_H  ; Less than or Equal
+00:00001818 6000FF0A        	  1107:     bra     COLLISION_CHECK_DONE    ; If not no collision   
+                            	  1108: PLAYER_Y_LTE_TO_ENEMY3_Y_PLUS_H::     
+00:0000181C 22381B14        	  1109:     move.l  PLAYER_Y,D1          ; Move Player Y to D1
+00:00001820 24381B42        	  1110:     move.l  ENEMY3_Y,D2         ; Move Enemy Y to D2
+00:00001824 5782            	  1111:     sub.l   #ENMY_H_INIT,D2         ; Set Enemy Height to D2
+00:00001826 B481            	  1112:     cmp.l   D1,D2          ; Do they Overlap ?
+00:00001828 6F04            	  1113:     ble     PLAYER_Y_PLUS_H_LTE_TO_ENEMY3_Y  ; Less than or Equal
+00:0000182A 6000FEF8        	  1114:     bra     COLLISION_CHECK_DONE    ; If not no collision 
+                            	  1115: PLAYER_Y_PLUS_H_LTE_TO_ENEMY3_Y::    ; Less than or Equal ?
+00:0000182E 5781            	  1116:     sub.l   #PLYR_H_INIT,D1         ; Add Player Height to D1
+00:00001830 24381B42        	  1117:     move.l  ENEMY3_Y,D2         ; Move Enemy Height to D2  
+00:00001834 B481            	  1118:     cmp.l   D1,D2          ; Do they OverLap ?
+00:00001836 6C00FEEE        	  1119:     bge     COLLISION               ; Collision !
+00:0000183A 6000FEE8        	  1120:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	  1121:     
+                            	  1122: CHECK_POWERUP_COLLISIONS::
+00:0000183E 7200            	  1123:     clr.l   D1                      ; Clear D1
+00:00001840 7400            	  1124:     clr.l   D2                      ; Clear D2  
+00:00001842 45F81B4F        	  1125:     lea     POWERUP_C,A2       ; LOADING THE COLLISION FLAG INTO A2 IN PREPARATION FOR A POTENTIAL COLLISON
+                            	  1126:     
+                            	  1127: PLAYER_X_LTE_TO_POWERUP_X_PLUS_W::
+00:00001846 22381B10        	  1128:     move.l  PLAYER_X,D1          ; Move Player X to D1
+00:0000184A 24381B47        	  1129:     move.l  POWERUP_X,D2        ; Move Enemy X to D2
+00:0000184E 5A82            	  1130:     add.l   #POWERUP_W_INIT,D2      ; Set Enemy width X + Width
+00:00001850 B282            	  1131:     cmp.l   D2,D1          ; Do the Overlap ?
+00:00001852 6F04            	  1132:     ble     PLAYER_X_PLUS_W_LTE_TO_POWERUP_X  ; Less than or Equal ?
+00:00001854 6000FECE        	  1133:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	  1134: PLAYER_X_PLUS_W_LTE_TO_POWERUP_X::   ; Check player is not  
+00:00001858 5A81            	  1135:     add.l   #PLYR_W_INIT,D1         ; Move Player Width to D1
+00:0000185A 24381B47        	  1136:     move.l  POWERUP_X,D2        ; Move Enemy X to D2
+00:0000185E B481            	  1137:     cmp.l   D1,D2          ; Do they OverLap ?
+00:00001860 6F04            	  1138:     ble     PLAYER_Y_LTE_TO_POWERUP_Y_PLUS_H  ; Less than or Equal
+00:00001862 6000FEC0        	  1139:     bra     COLLISION_CHECK_DONE    ; If not no collision   
+                            	  1140: PLAYER_Y_LTE_TO_POWERUP_Y_PLUS_H::     
+00:00001866 22381B14        	  1141:     move.l  PLAYER_Y,D1          ; Move Player Y to D1
+00:0000186A 24381B4B        	  1142:     move.l  POWERUP_Y,D2        ; Move Enemy Y to D2
+00:0000186E 5782            	  1143:     sub.l   #POWERUP_H_INIT,D2      ; Set Enemy Height to D2
+00:00001870 B481            	  1144:     cmp.l   D1,D2          ; Do they Overlap ?
+00:00001872 6F04            	  1145:     ble     PLAYER_Y_PLUS_H_LTE_TO_POWERUP_Y  ; Less than or Equal
+00:00001874 6000FEAE        	  1146:     bra     COLLISION_CHECK_DONE    ; If not no collision 
+                            	  1147: PLAYER_Y_PLUS_H_LTE_TO_POWERUP_Y::   ; Less than or Equal ?
+00:00001878 5781            	  1148:     sub.l   #PLYR_H_INIT,D1         ; Add Player Height to D1
+00:0000187A 24381B4B        	  1149:     move.l  POWERUP_Y,D2        ; Move Enemy Height to D2  
+00:0000187E B481            	  1150:     cmp.l   D1,D2          ; Do they OverLap ?
+00:00001880 6C00FEE8        	  1151:     bge     POWERUP_COLLISION       ; Collision !
+00:00001884 6000FE9E        	  1152:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	  1153:     
+                            	  1154: CHECK_GROWTH_COLLISIONS::
+00:00001888 7200            	  1155:     clr.l   D1                      ; Clear D1
+00:0000188A 7400            	  1156:     clr.l   D2                      ; Clear D2
+                            	  1157: PLAYER_X_LTE_TO_GROWTH_X_PLUS_W::
+00:0000188C 22381B10        	  1158:     move.l  PLAYER_X,D1          ; Move Player X to D1
+00:00001890 24381B50        	  1159:     move.l  GROWTH_X,D2         ; Move GROWTH X to D2
+00:00001894 D4B80004        	  1160:     add.l   GROWTH_W,D2             ; Set GROWTH X + Width
+00:00001898 5B82            	  1161:     sub.l   #05,D2                  ; Subtracting 10 from D2 makes the collision more lenient
+00:0000189A B481            	  1162:     cmp.l   D1,D2          ; Do the Overlap ?
+00:0000189C 6F04            	  1163:     ble     PLAYER_X_PLUS_W_LTE_TO_GROWTH_X  ; Less than or Equal ?
+00:0000189E 6000FE84        	  1164:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	  1165: PLAYER_X_PLUS_W_LTE_TO_GROWTH_X::    ;  
+00:000018A2 D2B80005        	  1166:     add.l   PLYR_W_INIT,D1          ; Move Player Width to D1
+00:000018A6 24381B50        	  1167:     move.l  GROWTH_X,D2         ; Move GROWTH X to D2
+00:000018AA 5A82            	  1168:     add.l   #05,D2                  ; Adding 10 to D2 makes the collision more lenient
+00:000018AC B481            	  1169:     cmp.l   D1,D2          ; Do they OverLap ?
+00:000018AE 6C04            	  1170:     bge     PLAYER_Y_LTE_TO_GROWTH_Y_PLUS_H  ; Less than or Equal
+00:000018B0 6000FE72        	  1171:     bra     COLLISION_CHECK_DONE    ; If not no collision   
+                            	  1172: PLAYER_Y_LTE_TO_GROWTH_Y_PLUS_H::     
+00:000018B4 22381B14        	  1173:     move.l  PLAYER_Y,D1          ; Move Player Y to D1
+00:000018B8 24381B54        	  1174:     move.l  GROWTH_Y,D2         ; Move GROWTH Y to D2
+00:000018BC D4B80004        	  1175:     add.l   GROWTH_H,D2             ; Set GROWTH Height to D2
+00:000018C0 94BC0000000F    	  1176:     sub.l   #15,D2          ; Brings the collision of the lower part of the rectangle upwards
+00:000018C6 B481            	  1177:     cmp.l   D1,D2          ; Do they Overlap ?
+00:000018C8 6F04            	  1178:     ble     PLAYER_Y_PLUS_H_LTE_TO_GROWTH_Y  ; Less than or Equal
+00:000018CA 6000FE58        	  1179:     bra     COLLISION_CHECK_DONE    ; If not no collision 
+                            	  1180: PLAYER_Y_PLUS_H_LTE_TO_GROWTH_Y::    ; Less than or Equal ?
+00:000018CE D2B80003        	  1181:     add.l   PLYR_H_INIT,D1          ; Add Player Height to D1
+00:000018D2 24381B54        	  1182:     move.l  GROWTH_Y,D2         ; Move GROWTH Height to D2
+00:000018D6 94BC0000000F    	  1183:     sub.l   #15,D2          ; Brings the collision of the upper part of the rectangle upwards
+00:000018DC B481            	  1184:     cmp.l   D1,D2          ; Do they OverLap ?
+00:000018DE 6C04            	  1185:     bge     GROWTH_COLLISION               ; Collision !
+00:000018E0 6000FE42        	  1186:     bra     COLLISION_CHECK_DONE    ; If not no collision
+                            	  1187:                             
+                            	  1188: GROWTH_COLLISION::
+00:000018E4 52B81B58        	  1189:     add.l   #01,PLAYER_GROWTH             ;Subtracting the enemy damage from the player's health
+00:000018E8 4E75            	  1190:     rts                                     ; Return to subroutine
+                            	  1191: 
+                            	  1192: *-----------------------------------------------------------
+                            	  1193: * Subroutine    :: EXIT
+                            	  1194: * Description   :: Exit message and End Game
+                            	  1195: *-----------------------------------------------------------
+                            	  1196: EXIT::
+                            	  1197: 
+                            	  1198:     ; Clear screen
+00:000018EA 103C000B        	  1199:     move.b  #TC_CURSR_P,D0          ; SET CURSOR POSITION
+00:000018EE 323CFF00        	  1200:     move.w  #$FF00,D1
+00:000018F2 4E4F            	  1201:     trap    #15                     ; Trap (Perform action)
+                            	  1202:     
+                            	  1203:     
+                            	  1204:     ; WRITE GAME OVER MESSAGE
+00:000018F4 303C0015        	  1205:     move    #21,D0
+00:000018F8 223C000000FF    	  1206:     move.l  #RED,D1          ; SETTING FONT COLOUR
+00:000018FE 243C01090001    	  1207:     move.l  #$01090001,D2          ; FONT :: FIXEDSYS, SIZE :: 9, BOLD
+00:00001904 4E4F            	  1208:     trap    #15                     ; trap (PERFORM ACTION)
+                            	  1209:     
+00:00001906 103C000B        	  1210:     move.b  #TC_CURSR_P,D0          ; Set Cursor Position
+00:0000190A 323C1E0D        	  1211:     move.w  #$1E0D,D1          ; Col 18, Row 13
+00:0000190E 4E4F            	  1212:     trap    #15                     ; Trap (Perform action)    
+00:00001910 43F81ABA        	  1213:     lea     GAME_OVER_MSG,A1       ; Move GAME OVER Message to D1
+00:00001914 103C000D        	  1214:     move.b  #13,D0          ; Display the contents of D1
+00:00001918 4E4F            	  1215:     trap    #15  
+                            	  1216: 
+                            	  1217:     ; Player Score Message
+00:0000191A 303C0015        	  1218:     move    #21,D0
+00:0000191E 223C00FFFFFF    	  1219:     move.l  #WHITE,D1          ; SETTING FONT COLOUR
+00:00001924 243C01090000    	  1220:     move.l  #$01090000,D2          ; FONT :: FIXEDSYS, SIZE :: 9, BOLD
+00:0000192A 4E4F            	  1221:     trap    #15                     ; trap (PERFORM ACTION)
+                            	  1222:     
+00:0000192C 103C000B        	  1223:     move.b  #TC_CURSR_P,D0          ; Set Cursor Position
+00:00001930 323C220F        	  1224:     move.w  #$220F,D1          ; Col 22, Row 15
+00:00001934 4E4F            	  1225:     trap    #15                     ; Trap (Perform action)
+00:00001936 43F81A72        	  1226:     lea     SCORE_MSG,A1          ; Score Message
+00:0000193A 303C000D        	  1227:     move    #13,D0          ; No Line feed
+00:0000193E 4E4F            	  1228:     trap    #15                     ; Trap (Perform action)
+                            	  1229: 
+                            	  1230:     ; Player Score Value
+00:00001940 103C000B        	  1231:     move.b  #TC_CURSR_P,D0          ; Set Cursor Position
+00:00001944 323C2A0F        	  1232:     move.w  #$2A0F,D1          ; Col 30, Row 15
+00:00001948 4E4F            	  1233:     trap    #15                     ; Trap (Perform action)
+00:0000194A 103C0003        	  1234:     move.b  #03,D0          ; Display number at D1.L
+00:0000194E 22381B18        	  1235:     move.l  PLAYER_SCORE,D1         ; Move Score to D1.L
+00:00001952 4E4F            	  1236:     trap    #15                     ; Trap (Perform action)
+                            	  1237:     
+                            	  1238:     ; Player DISTANCE Message
+00:00001954 303C0015        	  1239:     move    #21,D0
+00:00001958 223C00FFFFFF    	  1240:     move.l  #WHITE,D1          ; SETTING FONT COLOUR
+00:0000195E 243C01090000    	  1241:     move.l  #$01090000,D2          ; FONT :: FIXEDSYS, SIZE :: 9, BOLD
+00:00001964 4E4F            	  1242:     trap    #15                     ; trap (PERFORM ACTION)
+                            	  1243:     
+00:00001966 103C000B        	  1244:     move.b  #TC_CURSR_P,D0          ; Set Cursor Position
+00:0000196A 323C2111        	  1245:     move.w  #$2111,D1          ; Col 21, Row 11
+00:0000196E 4E4F            	  1246:     trap    #15                     ; Trap (Perform action)
+00:00001970 43F81AA7        	  1247:     lea     DISTANCE_MSG,A1        ; DISTANCE Message
+00:00001974 303C000D        	  1248:     move    #13,D0          ; No Line feed
+00:00001978 4E4F            	  1249:     trap    #15                     ; Trap (Perform action)
+                            	  1250:     
+                            	  1251:     ; Player DISTANCE Value
+00:0000197A 103C000B        	  1252:     move.b  #TC_CURSR_P,D0          ; Set Cursor Position
+00:0000197E 323C2B11        	  1253:     move.w  #$2B11,D1          ; Col 31 , Row 11
+00:00001982 4E4F            	  1254:     trap    #15                     ; Trap (Perform action)
+00:00001984 103C0003        	  1255:     move.b  #03,D0          ; Display number at D1.L
+00:00001988 22381B1C        	  1256:     move.l  DISTANCE,D1          ; Move DISTANCE to D1.L
+00:0000198C 4E4F            	  1257:     trap    #15                     ; Trap (Perform action)
+                            	  1258:     
+                            	  1259:     ; Player GOLD Message
+00:0000198E 103C000B        	  1260:     move.b  #TC_CURSR_P,D0          ; Set Cursor Position
+00:00001992 323C2113        	  1261:     move.w  #$2113,D1          ; Col 32, Row 12
+00:00001996 4E4F            	  1262:     trap    #15                     ; Trap (Perform action)
+00:00001998 43F81A9F        	  1263:     lea     GAME_OVER_MSG2,A1 ; Second Game Over Message to show gold
+00:0000199C 303C000D        	  1264:     move    #13,D0          ; No Line feed
+00:000019A0 4E4F            	  1265:     trap    #15                     ; Trap (Perform action)
+                            	  1266:     
+                            	  1267:     ; Player GROWTH
+00:000019A2 103C000B        	  1268:     move.b  #TC_CURSR_P,D0          ; Set Cursor Position
+00:000019A6 323C2B13        	  1269:     move.w  #$2B13,D1          ; Col 30, Row 12
+00:000019AA 4E4F            	  1270:     trap    #15                     ; Trap (Perform action)
+00:000019AC 103C0003        	  1271:     move.b  #03,D0          ; Display number at D1.L
+00:000019B0 22381B58        	  1272:     move.l  PLAYER_GROWTH,D1     ; Move Player_Growth to D1.L
+00:000019B4 4E4F            	  1273:     trap    #15                     ; Trap (Perform action)
+                            	  1274: 
+                            	  1275:     ; Enable back buffer
+00:000019B6 103C005E        	  1276:     move.b  #94,D0          ; This copies the off screen buffer to the on screen buffer
+00:000019BA 4E4F            	  1277:     trap    #15
+                            	  1278:     
+00:000019BC 103C0009        	  1279:     move.b  #TC_EXIT,D0          ; Exit Code
+00:000019C0 4E4F            	  1280:     trap    #15                     ; Trap (Perform action)
+                            	  1281:    
+                            	  1282: *-----------------------------------------------------------
+                            	  1283: * Subroutine    :: Draw Player Data
+                            	  1284: * Description   :: Draw Player X, Y, Velocity, Gravity and OnGround
+                            	  1285: *-----------------------------------------------------------
+                            	  1286: DRAW_PLYR_DATA::
+00:000019C2 7200            	  1287:     clr.l   D1                      ; Clear contents of D1 (XOR is faster)
+00:000019C4 7400            	  1288:     clr.l   d2
+00:000019C6 143C000A        	  1289:     move.b  #10,D2          ; Move Number Base to D2.B
+                            	  1290: 
+00:000019CA 61000086        	  1291:     bsr     CLEAR_SCREEN
+                            	  1292: 
+                            	  1293:     ; Player Score Message
+00:000019CE 43F81A72        	  1294:     lea     SCORE_MSG,A1         ; Score Message to A1
+00:000019D2 6160            	  1295:     bsr     PRINT                ; BSR to print
+                            	  1296: 
+                            	  1297:     ; Player Score Value    
+00:000019D4 22381B18        	  1298:     move.l  PLAYER_SCORE,D1         ; Move Score to D1.L
+00:000019D8 6160            	  1299:     bsr     PRINTNUM        ; BSR to printNum
+                            	  1300: 
+00:000019DA 616E            	  1301:     bsr     TAB
+                            	  1302:     
+                            	  1303:     ; Player DISTANCE Message
+00:000019DC 43F81AA7        	  1304:     lea     DISTANCE_MSG,A1        ; DISTANCE Message
+00:000019E0 6152            	  1305:     bsr     PRINT
+                            	  1306:     
+                            	  1307:     ; Player DISTANCE
+00:000019E2 22381B1C        	  1308:     move.l  DISTANCE,D1          ; Move DISTANCE to D1.L
+00:000019E6 6152            	  1309:     bsr     PRINTNUM
+                            	  1310: 
+                            	  1311:     ; LEVEL Message
+00:000019E8 43F81AB2        	  1312:     lea     LEVEL_MSG,A1      ; LEVEL Message
+00:000019EC 6146            	  1313:     bsr     PRINT
+                            	  1314:     
+                            	  1315:     ; CURRENT LEVEL
+00:000019EE 22381B7A        	  1316:     move.l  LEVEL,D1          ; 
+00:000019F2 6146            	  1317:     bsr     PRINTNUM
+                            	  1318: 
+00:000019F4 6154            	  1319:     bsr     TAB
+                            	  1320:     
+                            	  1321:     ; Show  GROWTH Message 
+00:000019F6 43F81A99        	  1322:     lea     GROWTH_MSG,A1          ; Move Growth Message to A1
+00:000019FA 6138            	  1323:     bsr     PRINT
+                            	  1324:     
+                            	  1325:     ;Player GROWTH
+00:000019FC 22381B58        	  1326:     move.l  PLAYER_GROWTH,D1       ; Move Health to D1.L
+00:00001A00 6138            	  1327:     bsr     PRINTNUM
+                            	  1328: 
+00:00001A02 613C            	  1329:     bsr     LINE
+                            	  1330: 
+                            	  1331:     ; Show Keys Pressed
+00:00001A04 43F81A7B        	  1332:     lea     KEYCODE_MSG,A1         ; Keycode
+00:00001A08 612A            	  1333:     bsr     PRINT
+                            	  1334: 
+                            	  1335:     ; Show KeyCode   
+00:00001A0A 22381B08        	  1336:     move.l  CURRENT_KEY,D1          ; Move Key Pressed to D1
+00:00001A0E 612A            	  1337:     bsr     PRINTNUM    
+                            	  1338: 
+00:00001A10 612E            	  1339:     bsr     LINE
+                            	  1340: 
+                            	  1341:     ; Player Health Message
+                            	  1342: 
+00:00001A12 43F81A86        	  1343:     lea     HEALTH_MSG,A1          ; Display the contents of D1
+00:00001A16 611C            	  1344:     bsr     PRINT
+                            	  1345: 
+                            	  1346:     ; Player Health Value
+00:00001A18 22381B0C        	  1347:     move.l  PLAYER_HEALTH,D1
+00:00001A1C 611C            	  1348:     bsr     PRINTNUM
+                            	  1349:     
+00:00001A1E 6120            	  1350:     bsr     LINE
+00:00001A20 611E            	  1351:     bsr     LINE
+00:00001A22 611C            	  1352:     bsr     LINE
+00:00001A24 611A            	  1353:     bsr     LINE
+00:00001A26 6118            	  1354:     bsr     LINE
+00:00001A28 6116            	  1355:     bsr     LINE
+00:00001A2A 43F900000000    	  1356:     lea     BLOCK,A1
+00:00001A30 6102            	  1357:     bsr     PRINT
+00:00001A32 4E75            	  1358:     rts
+                            	  1359: *------------------------------------------------------------
+                            	  1360: *   Subroutine  :   Print
+                            	  1361: *   Description :   Prints to screen
+                            	  1362: *------------------------------------------------------------
+                            	  1363: PRINT::
+00:00001A34 700E            	  1364:     move.l  #14,D0                     ; Func code is 0 PRINT
+00:00001A36 4E4F            	  1365:     trap    #15                       ; TRAP to firmware
+00:00001A38 4E75            	  1366:     rts   
+                            	  1367: PRINTNUM::
+00:00001A3A 700F            	  1368:     move.l  #15,D0                     ; Func code is 0 PRINT
+00:00001A3C 4E4F            	  1369:     trap    #15                       ; TRAP to firmware
+00:00001A3E 4E75            	  1370:     rts   
+                            	  1371: LINE::
+00:00001A40 700D            	  1372:     move.l  #13,D0
+00:00001A42 43F81AA6        	  1373:     lea     LINEBREAK,A1
+00:00001A46 4E4F            	  1374:     trap    #15
+00:00001A48 4E75            	  1375:     rts
+                            	  1376: TAB::
+00:00001A4A 43F81AC5        	  1377:     lea     TABMSG,A1
+00:00001A4E 61E4            	  1378:     bsr     PRINT
+00:00001A50 4E75            	  1379:     rts
+                            	  1380: CLEAR_SCREEN::
+00:00001A52 700B            	  1381:     move.l  #11,D0                          ; Function code is '11' for clearing the screen
+00:00001A54 323CFF00        	  1382:     move.w  #$FF00,D1                       ; Special case for clear screen
+00:00001A58 4E4F            	  1383:     trap    #15                             ; Call TRAP firmware routine to clear the screen
+00:00001A5A 4E75            	  1384:     rts                                     ; Return from subroutine
+                            	  1385: READCHAR::
+00:00001A5C 7005            	  1386:     move.l  #5,D0                     ; Func code is 5
+00:00001A5E 4E4F            	  1387:     trap    #15                       ; TRAP to Easy68k firmware
+00:00001A60 B180            	  1388:     eor.l   D0,D0                     ; Zero D0...
+00:00001A62 1001            	  1389:     move.b  D1,D0                     ; ... and place return value there
+00:00001A64 4E75            	  1390:     rts                               ; We're done.
+                            	  1391: WRITECHAR::
+00:00001A66 7006            	  1392:     move.l  #6,D0                     ; Func code is 6
+00:00001A68 4E4F            	  1393:     trap    #15                       ; TRAP to Easy68k firmware
+00:00001A6A 4E75            	  1394:     rts                               ; We're done.
+                            	  1395: MOVECURSOR::
+                            	  1396:     ;;Store XXYY in d1
+00:00001A6C 700B            	  1397:     move.l  #11,D0                    ; Func code is 11
+00:00001A6E 4E4F            	  1398:     trap    #15                       ; TRAP to Easy68k firmware
+00:00001A70 4E75            	  1399:     rts                               ; We're done.
+                            	  1400: *-----------------------------------------------------------
+                            	  1401: * Section       :: Messages
+                            	  1402: * Description   :: Messages to Print on Console, names should be
+                            	  1403: * self documenting
+                            	  1404: *-----------------------------------------------------------
+00:00001A72 53636F7265203A20	  1405: SCORE_MSG       DC.B    'Score : ', 0       ; Score Message
+00:00001A7A 00
+00:00001A7B 4B6579436F646520	  1406: KEYCODE_MSG     DC.B    'KeyCode : ', 0     ; Keycode Message
+00:00001A83 3A20
+00:00001A85 00
+00:00001A86 4865616C7468203A	  1407: HEALTH_MSG      DC.B    'Health : ',0       ; Health Message
+00:00001A8E 20
+00:00001A8F 00
+00:00001A90 4A756D702E2E2E2E	  1408: JUMP_MSG        DC.B    'Jump....', 0       ; Jump Message
+00:00001A98 00
+00:00001A99 476F6C643A      	  1409: GROWTH_MSG      DC.B    'Gold:', 0        ; Wealth Message
+00:00001A9E 00
+00:00001A9F 476F6C64203A    	  1410: GAME_OVER_MSG2  DC.B    'Gold :', 0
+00:00001AA5 00
+00:00001AA6 00              	  1411: LINEBREAK       DC.B    '', 0
+                            	  1412: 
+00:00001AA7 44697374616E6365	  1413: DISTANCE_MSG    DC.B    'Distance :', 0      ; Distance Message
+00:00001AAF 203A
+00:00001AB1 00
+00:00001AB2 4C6576656C203A  	  1414: LEVEL_MSG       DC.B    'Level :',0          ; DIFFICULTY LEVEL MESSAGE
+00:00001AB9 00
+                            	  1415: 
+00:00001ABA 47414D45204F5645	  1416: GAME_OVER_MSG   DC.B    'GAME OVER!', 0     ; GAME OVER MESSAGE
+00:00001AC2 5221
+00:00001AC4 00
+00:00001AC5 20202020        	  1417: TABMSG          DC.B    '    ', 0
+00:00001AC9 00
+00:00001ACA 205F5F5F20      	  1418: BLOCK1          DC.B    ' ___ ', 0
+00:00001ACF 00
+00:00001AD0 7C2020207C      	  1419: BLOCK2          DC.B    '|   |',0
+00:00001AD5 00
+00:00001AD6 7C5F5F5F7C      	  1420: BLOCK3          DC.B    '|___|',0
+00:00001ADB 00
+00:00001ADC 6F              	  1421: GROWTHBLOCK     DC.B    'o',0
+00:00001ADD 00
+                            	  1422:                          
+                            	  1423: *-----------------------------------------------------------
+                            	  1424: * Section       :: Graphic Colors
+                            	  1425: * Description   :: Screen Pixel Color
+                            	  1426: *-----------------------------------------------------------
+                            	  1427: WHITE           EQU     $00FFFFFF
+                            	  1428: RED             EQU     $000000FF
+00:00001ADE 5C3033335B34306D	  1429: BLACK           DC.B    '\033[40m',0
+00:00001AE6 00
+                            	  1430: GREEN           EQU     $0000FF00
+                            	  1431: GOLD            EQU     $0000D7FF
+                            	  1432: BLUE            EQU     $00FF0000
+                            	  1433: DARK_GREEN      EQU     $00009900
+                            	  1434: SKY_BLUE        EQU     $00FFCC99
+00:00001AE7 5C3033335B303134	  1435: LIGHT_BLUE      DC.B    '\033[014m',0
+00:00001AEF 6D
+00:00001AF0 00
+00:00001AF1 5C3033335B313032	  1436: LIGHT_GREEN     DC.B    '\033[102m',0
+00:00001AF9 6D
+00:00001AFA 00
+00:00001AFB 5C3033335B34326D	  1437: GRASS           DC.B    '\033[42m',0
+00:00001B03 00
+                            	  1438: 
+                            	  1439: *-----------------------------------------------------------
+                            	  1440: * Section       :: Screen Size
+                            	  1441: * Description   :: Screen Width and Height
+                            	  1442: *-----------------------------------------------------------
+00:00001B04 0000            	  1443: SCREEN_W        DS.W    01  ; Reserve Space for Screen Width
+00:00001B06 0000            	  1444: SCREEN_H        DS.W    01  ; Reserve Space for Screen Height
+                            	  1445: 
+                            	  1446: *-----------------------------------------------------------
+                            	  1447: * Section       :: Keyboard Input
+                            	  1448: * Description   :: Used for storing Keypresses
+                            	  1449: *-----------------------------------------------------------
+00:00001B08 00000000        	  1450: CURRENT_KEY     DS.L    01  ; Reserve Space for Current Key Pressed
+                            	  1451: 
+                            	  1452: *-----------------------------------------------------------
+                            	  1453: * Section       :: Character Positions
+                            	  1454: * Description   :: Player and Enemy Position Memory Locations
+                            	  1455: *-----------------------------------------------------------
+00:00001B0C 00000000        	  1456: PLAYER_HEALTH   DS.L    01  ; Reserve Space for Player Health
+00:00001B10 00000000        	  1457: PLAYER_X        DS.L    01  ; Reserve Space for Player X Position
+00:00001B14 00000000        	  1458: PLAYER_Y        DS.L    01  ; Reserve Space for Player Y Position
+00:00001B18 00000000        	  1459: PLAYER_SCORE    DS.L    01  ; Reserve Space for Player Score
+00:00001B1C 00000000        	  1460: DISTANCE        DS.L    01  ; RESERVE SPACE FOR PLAYER DISTANCE
+                            	  1461: 
+00:00001B20 00000000        	  1462: PLYR_VELOCITY   DS.L    01  ; Reserve Space for Player Velocity
+00:00001B24 00000000        	  1463: PLYR_GRAVITY    DS.L    01  ; Reserve Space for Player Gravity
+00:00001B28 00000000        	  1464: PLYR_ON_GND     DS.L    01  ; Reserve Space for Player on Ground
+                            	  1465: 
+00:00001B2C 00000000        	  1466: ENEMY_X         DS.L    01  ; Reserve Space for Enemy X Position
+00:00001B30 00000000        	  1467: ENEMY_Y         DS.L    01  ; Reserve Space for Enemy Y Position
+00:00001B34 00              	  1468: ENEMY_C         DS.B    01  ; RESERVES SPACE FOR ENEMY COLLISION FLAG
+                            	  1469: 
+00:00001B35 00000000        	  1470: ENEMY2_X        DS.L    01  ; RESERVE SPACE FOR ENEMY2 X POSITION
+00:00001B39 00000000        	  1471: ENEMY2_Y        DS.L    01  ; RESERVE SPACE FOR EMEMY2 Y POSITION
+00:00001B3D 00              	  1472: ENEMY2_C        DS.B    01  ; RESERVES SPACE FOR ENEMY2 COLLISION FLAG
+                            	  1473: 
+00:00001B3E 00000000        	  1474: ENEMY3_X        DS.L    01  ; RESERVE SPACE FOR ENEMY3 X POSITION
+00:00001B42 00000000        	  1475: ENEMY3_Y        DS.L    01  ; RESERVE SPACE FOR ENEMY3 X POSITION
+00:00001B46 00              	  1476: ENEMY3_C        DS.B    01  ; RESERVES SPACE FOR ENEMY3 COLLISION FLAG
+                            	  1477: 
+00:00001B47 00000000        	  1478: POWERUP_X       DS.L    01  ; RESERVE SPACE FOR POWERUP X POSITION
+00:00001B4B 00000000        	  1479: POWERUP_Y       DS.L    01  ; RESERVE SPACE FOR POWERUP Y POSITION
+00:00001B4F 00              	  1480: POWERUP_C       DS.B    01  ; RESERVES SPACE FOR POWERUP COLLISION FLAG
+                            	  1481: 
+00:00001B50 00000000        	  1482: GROWTH_X        DS.L    01  ; Reserve Space for GROWTH X Position
+00:00001B54 00000000        	  1483: GROWTH_Y        DS.L    01  ; Reserve Space for GROWTH Y Position
+00:00001B58 00000000        	  1484: PLAYER_GROWTH   DS.L    01  ; Reserve Space for Player Growth
+                            	  1485: 
+00:00001B5C 00000000        	  1486: GND_X           DS.L    01  ; RESERVE SPACE FOR GROUND X POSITION
+00:00001B60 00000000        	  1487: GND_Y           DS.L    01  ; RESERVE SPACE FOE GROUND Y POSITION
+                            	  1488: 
+00:00001B64 00000000        	  1489: HEALTH_X        DS.L    01  ; RESERVE SPACE FOR HEALTHBAR X
+00:00001B68 00000000        	  1490: HEALTH_Y        DS.L    01  ; RESERVE SPACE FOR HEALTHBAR Y
+00:00001B6C 00000000        	  1491: HEALTH_W        DS.L    01  ; RESERVE SPACE FOR HEALTHBAR WIDTH
+                            	  1492: 
+00:00001B70 00000000        	  1493: DAMAGE          DS.L    01  ; Reserve Space for damage
+00:00001B74 00000000        	  1494: HEAL            DS.L    01  ; RESERVE SPACE FOR HEAL POWERUP
+                            	  1495: 
+00:00001B78 00              	  1496: LEVEL2_FLAG     DS.B    01  ; RESERVE SPACE FOR THE LEVEL 2 FLAG
+00:00001B79 00              	  1497: LEVEL3_FLAG     DS.B    01  ; RESERVE SPACE FOR THE LEVEL 3 FLAG
+00:00001B7A 00000000        	  1498: LEVEL           DS.L    01  ; RESERVE SPACE FOR LEVEL
+                            	  1499: 
+00:00001B7E 00              	  1500: MOVE_POWER_FLG  DS.B    01  
+00:00001B7F 00              	  1501: MOVE_GROWTH_FLG DS.B    01
+                            	  1502: 
+                            	  1503: *-----------------------------------------------------------
+                            	  1504: * Section       :: Sounds
+                            	  1505: * Description   :: Sound files, which are then loaded and given    
+                            	  1506: * an address in memory, they take a longtime to process and play
+                            	  1507: * so keep the files small. Used https:://voicemaker.in/ to           
+                            	  1508: * generate and Audacity to convert MP3 to WAV                                                      
+                            	  1509: *-----------------------------------------------------------                                  
+00:00001B80 6A756D702E776176	  1510: JUMP_WAV        DC.B    'jump.wav',0            ; Jump Sound
+00:00001B88 00
+00:00001B89 73746570732E7761	  1511: RUN_WAV         DC.B    'steps.wav',0           ; Run Sound          
+00:00001B91 76
+00:00001B92 00
+00:00001B93 6869742E776176  	  1512: OPPS_WAV        DC.B    'hit.wav',0             ; Collision Opps
+00:00001B9A 00
+00:00001B9B 706F77657275702E	  1513: POWERUP_WAV     DC.B    'powerup.wav',0         ; POWERUP SOUND
+00:00001BA3 776176
+00:00001BA6 00
+                            	  1514: 
+                            	  1515:     END    START        ; last line of source
+                            	  1516: 
+                            	  1517: 
+                            	  1518: 
+                            	  1519: 
+                            	  1520: 
+                            	  1521: 
+                            	  1522: 
+                            	  1523: 
+                            	  1524: 
+                            	  1525: 
+                            	  1526: 
+                            	  1527: 
+                            	  1528: 
+                            	  1529: 
+                            	  1530: 
+                            	  1531: 
+                            	  1532: 
+                            	  1533: 
+                            	  1534: 
+                            	  1535: 
+                            	  1536: *~Font name~Courier New~
+                            	  1537: *~Font size~10~
+                            	  1538: *~Tab type~1~
+                            	  1539: *~Tab size~4~
+                            	  1540: 
+
+
+Symbols by name:
+B417                            external
+BLACK                            A:00001ADE
+BLOCK                           external
+BLOCK1                           A:00001ACA
+BLOCK2                           A:00001AD0
+BLOCK3                           A:00001AD6
+CHECK_ALL_COLLISIONS             A:000016D2 EXP
+CHECK_COLLISIONS                 A:000016E6 EXP
+CHECK_COLLISIONS2                A:000017AA EXP
+CHECK_COLLISIONS3                A:000017F4 EXP
+CHECK_GROWTH_COLLISIONS          A:00001888 EXP
+CHECK_POWERUP_COLLISIONS         A:0000183E EXP
+CLEAR_FILL                       A:0000149E EXP
+CLEAR_SCREEN                     A:00001A52 EXP
+CNG_ENEMY                        A:00001258 EXP
+CNG_ENEMY3                       A:00001268 EXP
+COLLISION                        A:00001726 EXP
+COLLISION_CHECK_DONE             A:00001724 EXP
+CURRENT_KEY                      A:00001B08
+DAMAGE                           A:00001B70
+DARK_GREEN                       E:00009900
+DISTANCE                         A:00001B1C
+DISTANCE_MSG                     A:00001AA7
+DMG_INIT                         E:00000019
+DRAW                             A:0000134C EXP
+DRAW_CLOUD                      external
+DRAW_ENEMY                       A:000014A8 EXP
+DRAW_ENEMY2                      A:000014D8 EXP
+DRAW_ENEMY3                      A:00001508 EXP
+DRAW_GND                         A:0000159E EXP
+DRAW_GROUND                      A:00001644 EXP
+DRAW_GROWTH                      A:0000156C EXP
+DRAW_H_BAR                       A:000015D4 EXP
+DRAW_PLAYER                      A:0000146E EXP
+DRAW_PLYR_DATA                   A:000019C2 EXP
+DRAW_POWERUP                     A:0000153A EXP
+DRAW_SKY                         A:000016AC EXP
+ENEMY2_C                         A:00001B3D
+ENEMY2_X                         A:00001B35
+ENEMY2_Y                         A:00001B39
+ENEMY3_C                         A:00001B46
+ENEMY3_X                         A:00001B3E
+ENEMY3_Y                         A:00001B42
+ENEMY_C                          A:00001B34
+ENEMY_X                          A:00001B2C
+ENEMY_Y                          A:00001B30
+ENMY_H_INIT                      E:00000003
+ENMY_W_INIT                      E:00000005
+EXIT                             A:000018EA EXP
+GAME                             A:00001170 EXP
+GAMELOOP                         A:00001174 EXP
+GAME_OVER_MSG                    A:00001ABA
+GAME_OVER_MSG2                   A:00001A9F
+GND_FALSE                        E:00000000
+GND_H                            E:00000001
+GND_TRUE                         E:00000001
+GND_W                            E:00002710
+GND_X                            A:00001B5C
+GND_Y                            A:00001B60
+GOLD                             E:0000D7FF
+GRASS                            A:00001AFB
+GREEN                            E:0000FF00
+GROWTHBLOCK                      A:00001ADC
+GROWTH_COLLISION                 A:000018E4 EXP
+GROWTH_H                         E:00000004
+GROWTH_MSG                       A:00001A99
+GROWTH_W                         E:00000004
+GROWTH_X                         A:00001B50
+GROWTH_Y                         A:00001B54
+HEAL                             A:00001B74
+HEALTH_H                         E:0000000A
+HEALTH_MSG                       A:00001A86
+HEALTH_W                         A:00001B6C
+HEALTH_X                         A:00001B64
+HEALTH_Y                         A:00001B68
+HEAL_INIT                        E:0000000F
+IDLE                             A:000013E2 EXP
+INITIALISE                       A:00001000 EXP
+INITIALISE_C_FLAGS               A:0000115A EXP
+INPUT                            A:00001186 EXP
+IS_PLAYER_ON_GND                 A:0000137E EXP
+JMP_INDEX                        E:00000001
+JUMP                             A:000013C0 EXP
+JUMP_DONE                        A:000013E0 EXP
+JUMP_LOAD                        A:00001402 EXP
+JUMP_MSG                         A:00001A90
+JUMP_WAV                         A:00001B80
+KEYCODE_MSG                      A:00001A7B
+LEVEL                            A:00001B7A
+LEVEL2_FLAG                      A:00001B78
+LEVEL2_TEST                      A:00001238 EXP
+LEVEL2_UPDATE                    A:00001248 EXP
+LEVEL3_FLAG                      A:00001B79
+LEVEL3_TEST                      A:00001278 EXP
+LEVEL3_UPDATE                    A:00001288 EXP
+LEVEL_MSG                        A:00001AB2
+LIGHT_BLUE                       A:00001AE7
+LIGHT_GREEN                      A:00001AF1
+LINE                             A:00001A40 EXP
+LINEBREAK                        A:00001AA6
+MOVECURSOR                       A:00001A6C EXP
+MOVE_ENEMY                       A:00001298 EXP
+MOVE_ENEMY2                      A:000012A2 EXP
+MOVE_ENEMY3                      A:000012A8 EXP
+MOVE_GROWTH                      A:000012C2 EXP
+MOVE_GROWTH_FLAG                external
+MOVE_GROWTH_FLG                  A:00001B7F
+MOVE_POWERUP                     A:000012AE EXP
+MOVE_POWER_FLAG                 external
+MOVE_POWER_FLG                   A:00001B7E
+OPPS_INDEX                       E:00000002
+OPPS_LOAD                        A:00001426 EXP
+OPPS_WAV                         A:00001B93
+PERFORM_JUMP                     A:000013D4 EXP
+PLAYER_GROWTH                    A:00001B58
+PLAYER_HEALTH                    A:00001B0C
+PLAYER_SCORE                     A:00001B18
+PLAYER_X                         A:00001B10
+PLAYER_X_LTE_TO_ENEMY2_X_PLUS_W  A:000017B2 EXP
+PLAYER_X_LTE_TO_ENEMY3_X_PLUS_W  A:000017FC EXP
+PLAYER_X_LTE_TO_ENEMY_X_PLUS_W   A:000016EE EXP
+PLAYER_X_LTE_TO_GROWTH_X_PLUS_W  A:0000188C EXP
+PLAYER_X_LTE_TO_POWERUP_X_PLUS_W  A:00001846 EXP
+PLAYER_X_PLUS_W_LTE_TO_ENEMY2_X  A:000017C4 EXP
+PLAYER_X_PLUS_W_LTE_TO_ENEMY3_X  A:0000180E EXP
+PLAYER_X_PLUS_W_LTE_TO_ENEMY_X   A:000016FE EXP
+PLAYER_X_PLUS_W_LTE_TO_GROWTH_X  A:000018A2 EXP
+PLAYER_X_PLUS_W_LTE_TO_POWERUP_X  A:00001858 EXP
+PLAYER_Y                         A:00001B14
+PLAYER_Y_LTE_TO_ENEMY2_Y_PLUS_H  A:000017D2 EXP
+PLAYER_Y_LTE_TO_ENEMY3_Y_PLUS_H  A:0000181C EXP
+PLAYER_Y_LTE_TO_ENEMY_Y_PLUS_H   A:0000170A EXP
+PLAYER_Y_LTE_TO_GROWTH_Y_PLUS_H  A:000018B4 EXP
+PLAYER_Y_LTE_TO_POWERUP_Y_PLUS_H  A:00001866 EXP
+PLAYER_Y_PLUS_H_LTE_TO_ENEMY2_Y  A:000017E4 EXP
+PLAYER_Y_PLUS_H_LTE_TO_ENEMY3_Y  A:0000182E EXP
+PLAYER_Y_PLUS_H_LTE_TO_ENEMY_Y   A:0000171A EXP
+PLAYER_Y_PLUS_H_LTE_TO_GROWTH_Y  A:000018CE EXP
+PLAYER_Y_PLUS_H_LTE_TO_POWERUP_Y  A:00001878 EXP
+PLAY_JUMP                        A:00001412 EXP
+PLAY_OPPS                        A:00001436 EXP
+PLAY_POWERUP                     A:0000145A EXP
+PLAY_RUN                         A:000013F6 EXP
+PLYR_DFLT_G                      E:00000001
+PLYR_DFLT_V                      E:00000000
+PLYR_GRAVITY                     A:00001B24
+PLYR_GROWTH_INIT                 E:00000000
+PLYR_HEALTH_INIT                 E:00000064
+PLYR_H_INIT                      E:00000003
+PLYR_JUMP_V                      E:FFFFFFF4
+PLYR_ON_GND                      A:00001B28
+PLYR_VELOCITY                    A:00001B20
+PLYR_W_INIT                      E:00000005
+POINTS                           E:00000001
+POWERUP_C                        A:00001B4F
+POWERUP_COLLISION                A:0000176A EXP
+POWERUP_H_INIT                   E:00000003
+POWERUP_INDEX                    E:00000003
+POWERUP_LOAD                     A:0000144A EXP
+POWERUP_WAV                      A:00001B9B
+POWERUP_W_INIT                   E:00000005
+POWERUP_X                        A:00001B47
+POWERUP_Y                        A:00001B4B
+PREVENT_OVERHEAL                 A:00001798 EXP
+PRINT                            A:00001A34 EXP
+PRINTNUM                         A:00001A3A EXP
+PROCESS_INPUT                    A:0000118E EXP
+READCHAR                         A:00001A5C EXP
+RED                              E:000000FF
+RESET_ENEMY2_POSITION            A:000012F6 EXP
+RESET_ENEMY3_POSITION            A:0000130C EXP
+RESET_ENEMY_POSITION             A:000012D8 EXP
+RESET_GROWTH_POSITION            A:00001340 EXP
+RESET_POWERUP_POSITION           A:0000132A EXP
+RUN_INDEX                        E:00000000
+RUN_LOAD                         A:000013E6 EXP
+RUN_WAV                          A:00001B89
+SCORE_MSG                        A:00001A72
+SCREEN_H                         A:00001B06
+SCREEN_W                         A:00001B04
+SET_OFF_GROUND                   A:000013B6 EXP
+SET_ON_GROUND                    A:00001396 EXP
+SKIPMOVE                         A:000012D6 EXP
+SKIP_DRAW                        A:000016AA EXP
+TAB                              A:00001A4A EXP
+TABMSG                           A:00001AC5
+TC_CURSR_P                       E:0000000B
+TC_EXIT                          E:00000009
+UPDATE                           A:000011AE EXP
+UPDATE_LOWSCORE                  A:00001760 EXP
+WHITE                            E:00FFFFFF
+WRITECHAR                        A:00001A66 EXP
+kmain                            A:00001000 EXP
+
+Symbols by value:
+FFFFFFF4 PLYR_JUMP_V
+00000000 GND_FALSE
+00000000 PLYR_DFLT_V
+00000000 PLYR_GROWTH_INIT
+00000000 RUN_INDEX
+00000001 GND_H
+00000001 GND_TRUE
+00000001 JMP_INDEX
+00000001 PLYR_DFLT_G
+00000001 POINTS
+00000002 OPPS_INDEX
+00000003 ENMY_H_INIT
+00000003 PLYR_H_INIT
+00000003 POWERUP_H_INIT
+00000003 POWERUP_INDEX
+00000004 GROWTH_H
+00000004 GROWTH_W
+00000005 ENMY_W_INIT
+00000005 PLYR_W_INIT
+00000005 POWERUP_W_INIT
+00000009 TC_EXIT
+0000000A HEALTH_H
+0000000B TC_CURSR_P
+0000000F HEAL_INIT
+00000019 DMG_INIT
+00000064 PLYR_HEALTH_INIT
+000000FF RED
+00001000 INITIALISE
+00001000 kmain
+0000115A INITIALISE_C_FLAGS
+00001170 GAME
+00001174 GAMELOOP
+00001186 INPUT
+0000118E PROCESS_INPUT
+000011AE UPDATE
+00001238 LEVEL2_TEST
+00001248 LEVEL2_UPDATE
+00001258 CNG_ENEMY
+00001268 CNG_ENEMY3
+00001278 LEVEL3_TEST
+00001288 LEVEL3_UPDATE
+00001298 MOVE_ENEMY
+000012A2 MOVE_ENEMY2
+000012A8 MOVE_ENEMY3
+000012AE MOVE_POWERUP
+000012C2 MOVE_GROWTH
+000012D6 SKIPMOVE
+000012D8 RESET_ENEMY_POSITION
+000012F6 RESET_ENEMY2_POSITION
+0000130C RESET_ENEMY3_POSITION
+0000132A RESET_POWERUP_POSITION
+00001340 RESET_GROWTH_POSITION
+0000134C DRAW
+0000137E IS_PLAYER_ON_GND
+00001396 SET_ON_GROUND
+000013B6 SET_OFF_GROUND
+000013C0 JUMP
+000013D4 PERFORM_JUMP
+000013E0 JUMP_DONE
+000013E2 IDLE
+000013E6 RUN_LOAD
+000013F6 PLAY_RUN
+00001402 JUMP_LOAD
+00001412 PLAY_JUMP
+00001426 OPPS_LOAD
+00001436 PLAY_OPPS
+0000144A POWERUP_LOAD
+0000145A PLAY_POWERUP
+0000146E DRAW_PLAYER
+0000149E CLEAR_FILL
+000014A8 DRAW_ENEMY
+000014D8 DRAW_ENEMY2
+00001508 DRAW_ENEMY3
+0000153A DRAW_POWERUP
+0000156C DRAW_GROWTH
+0000159E DRAW_GND
+000015D4 DRAW_H_BAR
+00001644 DRAW_GROUND
+000016AA SKIP_DRAW
+000016AC DRAW_SKY
+000016D2 CHECK_ALL_COLLISIONS
+000016E6 CHECK_COLLISIONS
+000016EE PLAYER_X_LTE_TO_ENEMY_X_PLUS_W
+000016FE PLAYER_X_PLUS_W_LTE_TO_ENEMY_X
+0000170A PLAYER_Y_LTE_TO_ENEMY_Y_PLUS_H
+0000171A PLAYER_Y_PLUS_H_LTE_TO_ENEMY_Y
+00001724 COLLISION_CHECK_DONE
+00001726 COLLISION
+00001760 UPDATE_LOWSCORE
+0000176A POWERUP_COLLISION
+00001798 PREVENT_OVERHEAL
+000017AA CHECK_COLLISIONS2
+000017B2 PLAYER_X_LTE_TO_ENEMY2_X_PLUS_W
+000017C4 PLAYER_X_PLUS_W_LTE_TO_ENEMY2_X
+000017D2 PLAYER_Y_LTE_TO_ENEMY2_Y_PLUS_H
+000017E4 PLAYER_Y_PLUS_H_LTE_TO_ENEMY2_Y
+000017F4 CHECK_COLLISIONS3
+000017FC PLAYER_X_LTE_TO_ENEMY3_X_PLUS_W
+0000180E PLAYER_X_PLUS_W_LTE_TO_ENEMY3_X
+0000181C PLAYER_Y_LTE_TO_ENEMY3_Y_PLUS_H
+0000182E PLAYER_Y_PLUS_H_LTE_TO_ENEMY3_Y
+0000183E CHECK_POWERUP_COLLISIONS
+00001846 PLAYER_X_LTE_TO_POWERUP_X_PLUS_W
+00001858 PLAYER_X_PLUS_W_LTE_TO_POWERUP_X
+00001866 PLAYER_Y_LTE_TO_POWERUP_Y_PLUS_H
+00001878 PLAYER_Y_PLUS_H_LTE_TO_POWERUP_Y
+00001888 CHECK_GROWTH_COLLISIONS
+0000188C PLAYER_X_LTE_TO_GROWTH_X_PLUS_W
+000018A2 PLAYER_X_PLUS_W_LTE_TO_GROWTH_X
+000018B4 PLAYER_Y_LTE_TO_GROWTH_Y_PLUS_H
+000018CE PLAYER_Y_PLUS_H_LTE_TO_GROWTH_Y
+000018E4 GROWTH_COLLISION
+000018EA EXIT
+000019C2 DRAW_PLYR_DATA
+00001A34 PRINT
+00001A3A PRINTNUM
+00001A40 LINE
+00001A4A TAB
+00001A52 CLEAR_SCREEN
+00001A5C READCHAR
+00001A66 WRITECHAR
+00001A6C MOVECURSOR
+00001A72 SCORE_MSG
+00001A7B KEYCODE_MSG
+00001A86 HEALTH_MSG
+00001A90 JUMP_MSG
+00001A99 GROWTH_MSG
+00001A9F GAME_OVER_MSG2
+00001AA6 LINEBREAK
+00001AA7 DISTANCE_MSG
+00001AB2 LEVEL_MSG
+00001ABA GAME_OVER_MSG
+00001AC5 TABMSG
+00001ACA BLOCK1
+00001AD0 BLOCK2
+00001AD6 BLOCK3
+00001ADC GROWTHBLOCK
+00001ADE BLACK
+00001AE7 LIGHT_BLUE
+00001AF1 LIGHT_GREEN
+00001AFB GRASS
+00001B04 SCREEN_W
+00001B06 SCREEN_H
+00001B08 CURRENT_KEY
+00001B0C PLAYER_HEALTH
+00001B10 PLAYER_X
+00001B14 PLAYER_Y
+00001B18 PLAYER_SCORE
+00001B1C DISTANCE
+00001B20 PLYR_VELOCITY
+00001B24 PLYR_GRAVITY
+00001B28 PLYR_ON_GND
+00001B2C ENEMY_X
+00001B30 ENEMY_Y
+00001B34 ENEMY_C
+00001B35 ENEMY2_X
+00001B39 ENEMY2_Y
+00001B3D ENEMY2_C
+00001B3E ENEMY3_X
+00001B42 ENEMY3_Y
+00001B46 ENEMY3_C
+00001B47 POWERUP_X
+00001B4B POWERUP_Y
+00001B4F POWERUP_C
+00001B50 GROWTH_X
+00001B54 GROWTH_Y
+00001B58 PLAYER_GROWTH
+00001B5C GND_X
+00001B60 GND_Y
+00001B64 HEALTH_X
+00001B68 HEALTH_Y
+00001B6C HEALTH_W
+00001B70 DAMAGE
+00001B74 HEAL
+00001B78 LEVEL2_FLAG
+00001B79 LEVEL3_FLAG
+00001B7A LEVEL
+00001B7E MOVE_POWER_FLG
+00001B7F MOVE_GROWTH_FLG
+00001B80 JUMP_WAV
+00001B89 RUN_WAV
+00001B93 OPPS_WAV
+00001B9B POWERUP_WAV
+00002710 GND_W
+00009900 DARK_GREEN
+0000D7FF GOLD
+0000FF00 GREEN
+00FFFFFF WHITE
